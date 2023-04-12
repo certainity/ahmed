@@ -74,7 +74,7 @@ df = load_the_spreadsheet(ws_choice)
 # Show the availibility as selection
 # select_CID = st.sidebar.selectbox('CID',list(df['Compound CID']))
 # values_list = worksheet.col_values(1)
-select_CID = st.sidebar.selectbox('CID',list(df['SN']))
+select_CID = st.sidebar.selectbox('Location',list(df['SN']))
 
 # Now we can use the pubchempy module to dump information
 comp = pcp.Compound.from_cid(select_CID)
