@@ -6,6 +6,8 @@ import '../features/home/home_screen.dart';
 import '../features/auth/sign_in_screen.dart';
 import '../features/auth/sign_up_screen.dart';
 import '../providers/auth_providers.dart';
+import '../features/create_post/create_post_screen.dart';
+import '../features/profile/profile_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authRepositoryProvider);
@@ -34,6 +36,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/create-post',
+        builder: (context, state) => const CreatePostScreen(),
+      ),
+      GoRoute(
+        path: '/profile/:userId',
+        builder: (context, state) => ProfileScreen(
+          userId: state.pathParameters['userId']!,
+        ),
       ),
       GoRoute(
         path: '/sign-in',
