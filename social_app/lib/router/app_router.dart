@@ -8,6 +8,7 @@ import '../features/auth/sign_up_screen.dart';
 import '../providers/auth_providers.dart';
 import '../features/create_post/create_post_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/feed/comments_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final auth = ref.watch(authRepositoryProvider);
@@ -45,6 +46,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/profile/:userId',
         builder: (context, state) => ProfileScreen(
           userId: state.pathParameters['userId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/post/:postId',
+        builder: (context, state) => CommentsScreen(
+          postId: state.pathParameters['postId']!,
         ),
       ),
       GoRoute(

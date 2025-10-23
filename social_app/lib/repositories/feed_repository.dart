@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/post.dart';
+import '../models/comment.dart';
 
 class FeedRepository extends ChangeNotifier {
   final List<Post> _posts = <Post>[
@@ -19,6 +20,10 @@ class FeedRepository extends ChangeNotifier {
       createdAt: DateTime.now().subtract(const Duration(hours: 2)),
     ),
   ];
+
+  // Track likes and comments per post
+  final Map<String, Set<String>> _postLikes = <String, Set<String>>{}; // postId -> userIds
+  final Map<String, List<Comment>> _postComments = <String, List<Comment>>{}; // postId -> comments
 
   List<Post> get posts {
     final List<Post> copy = List<Post>.from(_posts);
@@ -47,6 +52,59 @@ class FeedRepository extends ChangeNotifier {
       createdAt: DateTime.now(),
     );
     _posts.add(newPost);
+    notifyListeners();
+  }
+
+  // Post lookup
+  Post? getPostById(String postId) {
+    for (final Post post in _posts) {
+      if (post.id == postId) return post;
+    }
+    return null;
+  }
+
+  // Likes API
+  int likeCount(String postId) {
+    return _postLikes[postId]?.length ?? 0;
+  }
+
+  bool isLikedByUser(String postId, String userId) {
+    return _postLikes[postId]?.contains(userId) ?? false;
+  }
+
+  void toggleLike({required String postId, required String userId}) {
+    final Set<String> likedBy = _postLikes.putIfAbsent(postId, () => <String>{});
+    if (!likedBy.remove(userId)) {
+      likedBy.add(userId);
+    }
+    notifyListeners();
+  }
+
+  // Comments API
+  List<Comment> commentsForPost(String postId) {
+    final List<Comment> list = _postComments[postId] ?? const <Comment>[];
+    // newest last for chat-like ordering
+    return List<Comment>.unmodifiable(list);
+  }
+
+  void addComment({
+    required String postId,
+    required String authorId,
+    required String authorName,
+    required String text,
+  }) {
+    final String trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+    final Comment comment = Comment(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      postId: postId,
+      authorId: authorId,
+      authorName: authorName,
+      text: trimmed,
+      createdAt: DateTime.now(),
+    );
+    final List<Comment> list = _postComments.putIfAbsent(postId, () => <Comment>[]);
+    list.add(comment);
     notifyListeners();
   }
 }

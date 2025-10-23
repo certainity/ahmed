@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../models/post.dart';
+import '../../../providers/feed_providers.dart';
+import '../../../providers/auth_providers.dart';
 
-class PostCard extends StatelessWidget {
+class PostCard extends ConsumerWidget {
   final Post post;
   const PostCard({super.key, required this.post});
 
@@ -14,7 +18,12 @@ class PostCard extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feed = ref.watch(feedRepositoryProvider);
+    final auth = ref.watch(authRepositoryProvider);
+    final String? currentUserId = auth.currentUser?.id;
+    final bool liked = currentUserId == null ? false : feed.isLikedByUser(post.id, currentUserId);
+    final int likes = feed.likeCount(post.id);
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Padding(
@@ -24,8 +33,11 @@ class PostCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                CircleAvatar(
-                  child: Text(post.authorName.isNotEmpty ? post.authorName[0] : '?'),
+                GestureDetector(
+                  onTap: () => context.push('/profile/${post.authorId}'),
+                  child: CircleAvatar(
+                    child: Text(post.authorName.isNotEmpty ? post.authorName[0] : '?'),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -51,6 +63,24 @@ class PostCard extends StatelessWidget {
                 ),
               ),
             ],
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                TextButton.icon(
+                  onPressed: currentUserId == null
+                      ? null
+                      : () => ref.read(feedRepositoryProvider).toggleLike(postId: post.id, userId: currentUserId),
+                  icon: Icon(liked ? Icons.favorite : Icons.favorite_border, color: liked ? Colors.red : null),
+                  label: Text(likes.toString()),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => context.push('/post/${post.id}'),
+                  icon: const Icon(Icons.mode_comment_outlined),
+                  label: const Text('Comment'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
