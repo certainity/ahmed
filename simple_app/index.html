@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Counter</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --text: #e7eef8;
+      --muted: #8b9cb3;
+      --accent: #5b9fd4;
+      --accent-dim: #3d7aad;
+      font-family: system-ui, "Segoe UI", Roboto, Ubuntu, sans-serif;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6fa;
+        --surface: #ffffff;
+        --text: #1a2332;
+        --muted: #5c6b7d;
+        --accent: #2563eb;
+        --accent-dim: #1d4ed8;
+      }
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(ellipse 80% 60% at 50% -20%, var(--accent-dim), transparent),
+        var(--bg);
+      color: var(--text);
+    }
+    .card {
+      background: var(--surface);
+      padding: 2rem 2.5rem;
+      border-radius: 1rem;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+      text-align: center;
+      max-width: 22rem;
+      width: 90vw;
+      border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+    }
+    h1 {
+      margin: 0 0 0.25rem;
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    p.sub {
+      margin: 0 0 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .count {
+      font-size: 4rem;
+      font-weight: 700;
+      letter-spacing: -0.05em;
+      line-height: 1;
+      margin: 0.5rem 0 1.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .row {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    button {
+      appearance: none;
+      border: none;
+      border-radius: 0.5rem;
+      padding: 0.65rem 1.1rem;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: transform 0.12s ease, background 0.12s ease;
+    }
+    button:active {
+      transform: scale(0.97);
+    }
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover {
+      filter: brightness(1.08);
+    }
+    button.ghost {
+      background: color-mix(in srgb, var(--muted) 18%, transparent);
+      color: var(--text);
+    }
+    button.ghost:hover {
+      background: color-mix(in srgb, var(--muted) 28%, transparent);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <h1>Simple counter</h1>
+    <p class="sub">Tap + or −, or reset.</p>
+    <div class="count" id="count" aria-live="polite">0</div>
+    <div class="row">
+      <button type="button" class="ghost" id="dec" aria-label="Decrease">−</button>
+      <button type="button" class="primary" id="inc" aria-label="Increase">+</button>
+      <button type="button" class="ghost" id="reset" aria-label="Reset">Reset</button>
+    </div>
+  </main>
+  <script>
+    const el = document.getElementById("count");
+    const key = "simple_app_counter";
+    let n = Number.parseInt(sessionStorage.getItem(key), 10);
+    if (Number.isNaN(n)) n = 0;
+
+    function render() {
+      el.textContent = String(n);
+      sessionStorage.setItem(key, String(n));
+    }
+
+    document.getElementById("inc").addEventListener("click", () => {
+      n += 1;
+      render();
+    });
+    document.getElementById("dec").addEventListener("click", () => {
+      n -= 1;
+      render();
+    });
+    document.getElementById("reset").addEventListener("click", () => {
+      n = 0;
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>
