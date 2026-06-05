@@ -103,10 +103,10 @@ class GalleryFragment : Fragment() {
 
     private fun setupRecycler() {
         adapter = GalleryAdapter(
-            onPhotoClick = { photo, pos ->
+            onPhotoClick = { _, pos ->
+                PhotoViewerActivity.photosCache = photos
                 startActivity(
                     Intent(requireContext(), PhotoViewerActivity::class.java).apply {
-                        putParcelableArrayListExtra(PhotoViewerActivity.EXTRA_PHOTOS, ArrayList(photos))
                         putExtra(PhotoViewerActivity.EXTRA_POS, pos)
                     }
                 )

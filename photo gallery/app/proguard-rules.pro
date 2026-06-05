@@ -1,5 +1,10 @@
 -keep class com.ahmed.photogallery.** { *; }
 
+# Parcelable CREATOR must not be stripped
+-keepclassmembers class * implements android.os.Parcelable {
+    static ** CREATOR;
+}
+
 # Glide
 -keep public class * implements com.bumptech.glide.module.GlideModule
 -keep class * extends com.bumptech.glide.module.AppGlideModule { <init>(...); }

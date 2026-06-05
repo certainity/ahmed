@@ -1,7 +1,6 @@
 package com.ahmed.photogallery
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -18,8 +17,9 @@ class PhotoViewerActivity : AppCompatActivity() {
     private var currentPos = 0
 
     companion object {
-        const val EXTRA_PHOTOS = "extra_photos"
         const val EXTRA_POS = "extra_pos"
+        // Photos are passed via static cache to avoid TransactionTooLargeException
+        var photosCache: List<Photo> = emptyList()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,13 +28,7 @@ class PhotoViewerActivity : AppCompatActivity() {
         b = ActivityPhotoViewerBinding.inflate(layoutInflater)
         setContentView(b.root)
 
-        // API-33-safe parcelable list retrieval
-        photos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableArrayListExtra(EXTRA_PHOTOS, Photo::class.java) ?: emptyList()
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableArrayListExtra<Photo>(EXTRA_PHOTOS) ?: emptyList()
-        }
+        photos = photosCache
         currentPos = intent.getIntExtra(EXTRA_POS, 0)
 
         if (photos.isEmpty()) { finish(); return }
