@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Polish Gallery</string>
+    <string name="no_photos">No photos found</string>
+    <string name="edit_photo">Edit Photo</string>
+    <string name="reset">Reset</string>
+    <string name="save">Save</string>
+    <string name="tab_filter">Filter</string>
+    <string name="tab_adjust">Adjust</string>
+    <string name="tab_transform">Transform</string>
+    <string name="brightness">Brightness</string>
+    <string name="contrast">Contrast</string>
+    <string name="saturation">Saturation</string>
+    <string name="warmth">Warmth</string>
+    <string name="rotate">Rotate</string>
+    <string name="flip_h">Flip H</string>
+    <string name="flip_v">Flip V</string>
+</resources>

@@ -1,0 +1,2 @@
+-keep class com.ahmed.photogallery.** { *; }
+-dontwarn com.github.chrisbanes.photoview.**

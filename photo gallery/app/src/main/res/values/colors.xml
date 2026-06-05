@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg">#0D0D0D</color>
+    <color name="surface">#1C1C1E</color>
+    <color name="accent">#FF2D78</color>
+    <color name="white">#FFFFFF</color>
+    <color name="text_secondary">#8E8E93</color>
+    <color name="divider">#2C2C2E</color>
+
+    <!-- Required by launcher icon placeholder -->
+    <color name="ic_launcher_background">#FF2D78</color>
+    <color name="ic_launcher_foreground">#FFFFFF</color>
+</resources>
