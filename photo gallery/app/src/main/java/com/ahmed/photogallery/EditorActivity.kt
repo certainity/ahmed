@@ -2,18 +2,28 @@ package com.ahmed.photogallery
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.RectF
 import android.net.Uri
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.SeekBar
+import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ahmed.photogallery.adapter.FilterAdapter
 import com.ahmed.photogallery.databinding.ActivityEditorBinding
+import com.ahmed.photogallery.databinding.ItemAdjRowBinding
+import com.ahmed.photogallery.model.Adjustments
+import com.ahmed.photogallery.model.AspectRatio
+import com.ahmed.photogallery.model.CropConfig
 import com.ahmed.photogallery.model.Filters
-import com.ahmed.photogallery.model.PhotoFilter
+import com.ahmed.photogallery.ui.editor.EditorViewModel
 import com.ahmed.photogallery.utils.BitmapUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,22 +32,14 @@ import kotlinx.coroutines.withContext
 class EditorActivity : AppCompatActivity() {
 
     private lateinit var b: ActivityEditorBinding
-
-    private var original: Bitmap? = null
-    private var working: Bitmap? = null   // original with current transforms applied
-    private var displayed: Bitmap? = null // working + filter + adjustments
-    private var thumb: Bitmap? = null
-
-    private var currentFilter: PhotoFilter? = null
-    private var brightness = 0f
-    private var contrast = 1f
-    private var saturation = 1f
-    private var warmth = 0f
+    private val vm: EditorViewModel by viewModels()
 
     companion object {
         const val EXTRA_URI = "extra_uri"
-        private const val THUMB_SIZE = 120
     }
+
+    private var adjBeforeSlide: Adjustments? = null
+    private var intensityBeforeSlide = 1f
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,187 +49,292 @@ class EditorActivity : AppCompatActivity() {
         val uriStr = intent.getStringExtra(EXTRA_URI) ?: run { finish(); return }
         loadBitmap(Uri.parse(uriStr))
         setupTabs()
-        setupSeekBars()
-        setupButtons()
+        setupAdjustPanel()
+        setupCropPanel()
+        setupTransformPanel()
+        setupTopBar()
+        observeViewModel()
     }
 
-    // ── Load ──────────────────────────────────────────────────────────────────
+    // ── Bitmap loading ────────────────────────────────────────────────────────
 
     private fun loadBitmap(uri: Uri) {
         lifecycleScope.launch {
             b.loading.visibility = View.VISIBLE
-            val bmp = withContext(Dispatchers.IO) {
+            val bmp: Bitmap? = withContext(Dispatchers.IO) {
                 runCatching {
                     contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
                 }.getOrNull()
             }
             if (bmp == null) { finish(); return@launch }
-            original = bmp
-            working = bmp
-            thumb = Bitmap.createScaledBitmap(bmp, THUMB_SIZE, THUMB_SIZE, true)
+            vm.loadBitmap(bmp)
+            val thumb = withContext(Dispatchers.Default) {
+                Bitmap.createScaledBitmap(bmp, 100, 100, true)
+            }
+            setupFilterList(thumb)
+            b.loading.visibility = View.GONE
+        }
+    }
+
+    // ── ViewModel observation ─────────────────────────────────────────────────
+
+    private fun observeViewModel() {
+        vm.preview.observe(this) { bmp ->
+            bmp ?: return@observe
             b.ivPhoto.setImageBitmap(bmp)
             b.loading.visibility = View.GONE
-            setupFilterList()
+            if (currentTab != Tab.CROP) b.tvHint.visibility = View.VISIBLE
         }
+        vm.canUndo.observe(this) { can -> b.btnUndo.alpha = if (can) 1f else 0.35f }
+        vm.canRedo.observe(this) { can -> b.btnRedo.alpha = if (can) 1f else 0.35f }
     }
 
-    // ── Filters ───────────────────────────────────────────────────────────────
+    // ── Top bar ───────────────────────────────────────────────────────────────
 
-    private fun setupFilterList() {
-        val adapter = FilterAdapter(Filters.getAll(), thumb) { filter ->
-            currentFilter = filter
-            applyEdits()
-        }
-        b.rvFilters.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
-        b.rvFilters.adapter = adapter
-    }
-
-    // ── Tabs ──────────────────────────────────────────────────────────────────
-
-    private fun setupTabs() {
-        val tabs = listOf(b.btnFilter, b.btnAdjust, b.btnTransform)
-        val panels = listOf(b.rvFilters, b.panelAdjust, b.panelTransform)
-
-        fun select(idx: Int) {
-            tabs.forEachIndexed { i, tv ->
-                tv.alpha = if (i == idx) 1f else 0.45f
-            }
-            panels.forEachIndexed { i, panel ->
-                panel.visibility = if (i == idx) View.VISIBLE else View.GONE
-            }
-        }
-
-        b.btnFilter.setOnClickListener { select(0) }
-        b.btnAdjust.setOnClickListener { select(1) }
-        b.btnTransform.setOnClickListener { select(2) }
-        select(0)
-    }
-
-    // ── Seekbars ──────────────────────────────────────────────────────────────
-
-    private fun setupSeekBars() {
-        b.seekBrightness.progress = 50
-        b.seekContrast.progress = 50
-        b.seekSaturation.progress = 50
-        b.seekWarmth.progress = 50
-
-        b.seekBrightness.setOnSeekBarChangeListener(onSeek { p ->
-            brightness = lerp(p, -100f, 100f)
-            b.valBrightness.text = brightness.toInt().toString()
-            applyEdits()
-        })
-        b.seekContrast.setOnSeekBarChangeListener(onSeek { p ->
-            contrast = lerp(p, 0.2f, 2f)
-            b.valContrast.text = ((contrast - 1f) * 100).toInt().toString()
-            applyEdits()
-        })
-        b.seekSaturation.setOnSeekBarChangeListener(onSeek { p ->
-            saturation = lerp(p, 0f, 2f)
-            b.valSaturation.text = ((saturation - 1f) * 100).toInt().toString()
-            applyEdits()
-        })
-        b.seekWarmth.setOnSeekBarChangeListener(onSeek { p ->
-            warmth = lerp(p, -1f, 1f)
-            b.valWarmth.text = (warmth * 100).toInt().toString()
-            applyEdits()
-        })
-    }
-
-    private fun lerp(progress: Int, min: Float, max: Float) =
-        min + (progress / 100f) * (max - min)
-
-    private fun onSeek(block: (Int) -> Unit) = object : SeekBar.OnSeekBarChangeListener {
-        override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) { if (fromUser) block(p) }
-        override fun onStartTrackingTouch(sb: SeekBar) {}
-        override fun onStopTrackingTouch(sb: SeekBar) {}
-    }
-
-    // ── Apply edits ───────────────────────────────────────────────────────────
-
-    private fun applyEdits() {
-        val src = working ?: return
-        lifecycleScope.launch {
-            b.loading.visibility = View.VISIBLE
-            val result = withContext(Dispatchers.Default) {
-                var bmp = BitmapUtils.applyAdjustments(src, brightness, contrast, saturation, warmth)
-                currentFilter?.colorMatrix?.let { bmp = BitmapUtils.applyColorMatrix(bmp, it) }
-                bmp
-            }
-            displayed = result
-            b.ivPhoto.setImageBitmap(result)
-            b.loading.visibility = View.GONE
-            b.tvHint.visibility = View.VISIBLE
-        }
-    }
-
-    // ── Buttons ───────────────────────────────────────────────────────────────
-
-    private fun setupButtons() {
+    private fun setupTopBar() {
         b.btnBack.setOnClickListener { finish() }
+        b.btnUndo.setOnClickListener { vm.undo() }
+        b.btnRedo.setOnClickListener { vm.redo() }
 
         b.btnReset.setOnClickListener {
-            brightness = 0f; contrast = 1f; saturation = 1f; warmth = 0f
-            b.seekBrightness.progress = 50; b.seekContrast.progress = 50
-            b.seekSaturation.progress = 50; b.seekWarmth.progress = 50
-            b.valBrightness.text = "0"; b.valContrast.text = "0"
-            b.valSaturation.text = "0"; b.valWarmth.text = "0"
-            currentFilter = null
-            working = original
-            b.ivPhoto.setImageBitmap(original)
-            displayed = original
-            setupFilterList()
+            vm.reset()
+            b.seekIntensity.progress = 100
+            b.valIntensity.text = "100"
+            b.seekStraighten.progress = 45
+            b.valStraighten.text = "0°"
+            adjRows.forEach { row ->
+                row.seek.progress = if (row.bipolar) 100 else 0
+                row.value.text = "0"
+            }
+            b.tvHint.visibility = View.GONE
         }
 
         b.btnSave.setOnClickListener { save() }
 
-        b.btnRotate.setOnClickListener {
-            val bmp = (displayed ?: working) ?: return@setOnClickListener
-            val rotated = BitmapUtils.rotate(bmp, 90f)
-            working = rotated; displayed = rotated
-            b.ivPhoto.setImageBitmap(rotated)
-        }
-
-        b.btnFlipH.setOnClickListener {
-            val bmp = (displayed ?: working) ?: return@setOnClickListener
-            val flipped = BitmapUtils.flip(bmp, horizontal = true)
-            working = flipped; displayed = flipped
-            b.ivPhoto.setImageBitmap(flipped)
-        }
-
-        b.btnFlipV.setOnClickListener {
-            val bmp = (displayed ?: working) ?: return@setOnClickListener
-            val flipped = BitmapUtils.flip(bmp, horizontal = false)
-            working = flipped; displayed = flipped
-            b.ivPhoto.setImageBitmap(flipped)
-        }
-
-        // Long-press to compare with original; release to restore edit
         b.ivPhoto.setOnLongClickListener {
-            b.ivPhoto.setImageBitmap(original)
+            vm.sourceBitmap?.let { b.ivPhoto.setImageBitmap(it) }
             b.tvHint.visibility = View.GONE
             true
         }
-        b.ivPhoto.setOnTouchListener { _, event ->
-            if (event.action == android.view.MotionEvent.ACTION_UP ||
-                event.action == android.view.MotionEvent.ACTION_CANCEL
-            ) {
-                val cur = displayed ?: working ?: original
-                if (b.ivPhoto.drawable != null) b.ivPhoto.setImageBitmap(cur)
+        b.ivPhoto.setOnTouchListener { _, ev ->
+            if (ev.action == MotionEvent.ACTION_UP || ev.action == MotionEvent.ACTION_CANCEL) {
+                vm.preview.value?.let { b.ivPhoto.setImageBitmap(it) }
+                if (currentTab != Tab.CROP) b.tvHint.visibility = View.VISIBLE
             }
             false
         }
     }
 
+    // ── Filter panel ──────────────────────────────────────────────────────────
+
+    private fun setupFilterList(thumb: Bitmap) {
+        val adapter = FilterAdapter(Filters.getAll(), thumb) { filter ->
+            vm.setFilter(filter)
+        }
+        b.rvFilters.layoutManager = LinearLayoutManager(this, LinearLayoutManager.HORIZONTAL, false)
+        b.rvFilters.adapter = adapter
+
+        b.seekIntensity.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(sb: SeekBar) {
+                intensityBeforeSlide = vm.editState.value?.filterIntensity ?: 1f
+            }
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                b.valIntensity.text = p.toString()
+                vm.previewFilterIntensity(p / 100f)
+            }
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                vm.commitFilterIntensity(intensityBeforeSlide, sb.progress / 100f)
+            }
+        })
+    }
+
+    // ── Adjust panel ──────────────────────────────────────────────────────────
+
+    data class AdjRow(val label: TextView, val seek: SeekBar, val value: TextView,
+                      val bipolar: Boolean, val getter: Adjustments.() -> Float,
+                      val setter: Adjustments.(Float) -> Adjustments)
+
+    private val adjRows = mutableListOf<AdjRow>()
+
+    private fun setupAdjustPanel() {
+        data class Def(val res: Int, val bipolar: Boolean,
+                       val getter: Adjustments.() -> Float,
+                       val setter: Adjustments.(Float) -> Adjustments)
+
+        val defs = listOf(
+            Def(R.string.adj_exposure,    true,  { exposure    }, { copy(exposure    = it) }),
+            Def(R.string.adj_brightness,  true,  { brightness  }, { copy(brightness  = it) }),
+            Def(R.string.adj_contrast,    true,  { contrast    }, { copy(contrast    = it) }),
+            Def(R.string.adj_highlights,  true,  { highlights  }, { copy(highlights  = it) }),
+            Def(R.string.adj_shadows,     true,  { shadows     }, { copy(shadows     = it) }),
+            Def(R.string.adj_saturation,  true,  { saturation  }, { copy(saturation  = it) }),
+            Def(R.string.adj_vibrance,    true,  { vibrance    }, { copy(vibrance    = it) }),
+            Def(R.string.adj_temperature, true,  { temperature }, { copy(temperature = it) }),
+            Def(R.string.adj_tint,        true,  { tint        }, { copy(tint        = it) }),
+            Def(R.string.adj_sharpness,   false, { sharpness   }, { copy(sharpness   = it) }),
+            Def(R.string.adj_vignette,    false, { vignette    }, { copy(vignette    = it) }),
+            Def(R.string.adj_grain,       false, { grain       }, { copy(grain       = it) }),
+            Def(R.string.adj_fade,        false, { fade        }, { copy(fade        = it) }),
+        )
+
+        val container = b.panelAdjust.getChildAt(0) as ViewGroup
+        defs.forEachIndexed { idx, def ->
+            val rowView = container.getChildAt(idx) ?: return@forEachIndexed
+            val rb = ItemAdjRowBinding.bind(rowView)
+            rb.adjLabel.setText(def.res)
+            rb.adjSeek.max = if (def.bipolar) 200 else 100
+            rb.adjSeek.progress = if (def.bipolar) 100 else 0
+            rb.adjValue.text = "0"
+
+            val row = AdjRow(rb.adjLabel, rb.adjSeek, rb.adjValue,
+                def.bipolar, def.getter, def.setter)
+            adjRows.add(row)
+
+            rb.adjSeek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                private var beforeAdj = Adjustments()
+                override fun onStartTrackingTouch(sb: SeekBar) {
+                    beforeAdj = vm.editState.value?.adjustments ?: Adjustments()
+                    adjBeforeSlide = beforeAdj
+                }
+                override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                    if (!fromUser) return
+                    val v = if (def.bipolar) (p - 100).toFloat() else p.toFloat()
+                    rb.adjValue.text = v.toInt().toString()
+                    val cur = vm.editState.value?.adjustments ?: Adjustments()
+                    vm.previewAdjustments(def.setter(cur, v))
+                }
+                override fun onStopTrackingTouch(sb: SeekBar) {
+                    val after = vm.editState.value?.adjustments ?: Adjustments()
+                    vm.commitAdjustments(adjBeforeSlide ?: beforeAdj, after)
+                }
+            })
+        }
+    }
+
+    // ── Crop panel ────────────────────────────────────────────────────────────
+
+    private var currentAspectRatio = AspectRatio.FREE
+
+    private fun setupCropPanel() {
+        AspectRatio.values().forEachIndexed { i, ar ->
+            val chip = TextView(this).apply {
+                text = ar.label
+                textSize = 11f
+                setPadding(20, 8, 20, 8)
+                setTextColor(getColor(R.color.white))
+                background = getDrawable(R.drawable.chip_default_bg)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).also { it.marginEnd = 8 }
+            }
+            chip.setOnClickListener { selectAspectRatio(ar, i) }
+            b.chipGroup.addView(chip)
+        }
+        selectAspectRatio(AspectRatio.FREE, 0)
+
+        b.seekStraighten.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val angle = (p - 45).toFloat()
+                b.valStraighten.text = "${angle.toInt()}°"
+                vm.previewCropAngle(angle)
+            }
+            override fun onStartTrackingTouch(sb: SeekBar) {}
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+
+        b.btnApplyCrop.setOnClickListener {
+            val n = b.cropOverlay.getNormalizedCrop()
+            val angle = (b.seekStraighten.progress - 45).toFloat()
+            vm.commitCrop(CropConfig(n[0], n[1], n[2], n[3], angle, currentAspectRatio))
+        }
+    }
+
+    private fun selectAspectRatio(ar: AspectRatio, index: Int) {
+        currentAspectRatio = ar
+        for (i in 0 until b.chipGroup.childCount) {
+            (b.chipGroup.getChildAt(i) as? TextView)?.background =
+                getDrawable(R.drawable.chip_default_bg)
+        }
+        (b.chipGroup.getChildAt(index) as? TextView)?.background =
+            getDrawable(R.drawable.chip_selected_bg)
+
+        b.cropOverlay.aspectRatio = when (ar) {
+            AspectRatio.ORIGINAL -> vm.sourceBitmap?.let {
+                it.width.toFloat() / it.height.toFloat()
+            } ?: 0f
+            else -> ar.ratio
+        }
+    }
+
+    // ── Transform panel ───────────────────────────────────────────────────────
+
+    private fun setupTransformPanel() {
+        b.btnRotate.setOnClickListener { vm.rotate90() }
+        b.btnFlipH.setOnClickListener  { vm.flipHorizontal() }
+        b.btnFlipV.setOnClickListener  { vm.flipVertical() }
+    }
+
+    // ── Tabs ──────────────────────────────────────────────────────────────────
+
+    private enum class Tab { FILTER, ADJUST, CROP, TRANSFORM }
+    private var currentTab = Tab.FILTER
+
+    private fun setupTabs() {
+        b.btnFilter.setOnClickListener    { selectTab(Tab.FILTER) }
+        b.btnAdjust.setOnClickListener    { selectTab(Tab.ADJUST) }
+        b.btnCrop.setOnClickListener      { selectTab(Tab.CROP) }
+        b.btnTransform.setOnClickListener { selectTab(Tab.TRANSFORM) }
+        selectTab(Tab.FILTER)
+    }
+
+    private fun selectTab(tab: Tab) {
+        currentTab = tab
+        listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform)
+            .forEachIndexed { i, tv -> tv.alpha = if (tab.ordinal == i) 1f else 0.45f }
+        listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform)
+            .forEachIndexed { i, pv -> pv.visibility = if (tab.ordinal == i) View.VISIBLE else View.GONE }
+
+        val inCrop = tab == Tab.CROP
+        b.cropOverlay.visibility = if (inCrop) View.VISIBLE else View.GONE
+        b.tvHint.visibility = if (inCrop) View.GONE else View.VISIBLE
+        if (inCrop) positionCropOverlay()
+    }
+
+    private fun positionCropOverlay() {
+        b.ivPhoto.post {
+            val d = b.ivPhoto.drawable ?: return@post
+            val iw = d.intrinsicWidth.toFloat()
+            val ih = d.intrinsicHeight.toFloat()
+            if (iw <= 0 || ih <= 0) return@post
+            val vw = b.ivPhoto.width.toFloat()
+            val vh = b.ivPhoto.height.toFloat()
+            val scale = minOf(vw / iw, vh / ih)
+            val dw = iw * scale; val dh = ih * scale
+            val ox = (vw - dw) / 2f; val oy = (vh - dh) / 2f
+            b.cropOverlay.setImageRect(RectF(ox, oy, ox + dw, oy + dh))
+            val cfg = vm.editState.value?.cropConfig
+            if (cfg != null && !cfg.isDefault)
+                b.cropOverlay.restoreCrop(cfg.left, cfg.top, cfg.right, cfg.bottom)
+        }
+    }
+
+    // ── Save ──────────────────────────────────────────────────────────────────
+
     private fun save() {
-        val bmp = displayed ?: working ?: return
+        b.loading.visibility = View.VISIBLE
         lifecycleScope.launch {
-            b.loading.visibility = View.VISIBLE
-            val uri = BitmapUtils.saveToGallery(
-                this@EditorActivity, bmp, "edited_${System.currentTimeMillis()}"
-            )
+            val bmp = vm.renderForExport()
+            val uri = if (bmp != null)
+                BitmapUtils.saveToGallery(this@EditorActivity, bmp,
+                    "polished_${System.currentTimeMillis()}")
+            else null
             b.loading.visibility = View.GONE
-            val msg = if (uri != null) "Saved to gallery!" else "Save failed"
-            Toast.makeText(this@EditorActivity, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this@EditorActivity,
+                if (uri != null) R.string.saved else R.string.save_failed,
+                Toast.LENGTH_SHORT).show()
         }
     }
 }

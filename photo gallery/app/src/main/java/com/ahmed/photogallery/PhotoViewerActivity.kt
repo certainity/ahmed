@@ -1,14 +1,22 @@
 package com.ahmed.photogallery
 
+import android.content.ContentUris
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import com.ahmed.photogallery.databinding.ActivityPhotoViewerBinding
 import com.ahmed.photogallery.model.Photo
 import com.bumptech.glide.Glide
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class PhotoViewerActivity : AppCompatActivity() {
 
@@ -57,6 +65,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             }
         }
 
+        b.btnDelete.setOnClickListener { deleteCurrentPhoto() }
+
         toggleUi(true)
     }
 
@@ -98,6 +108,56 @@ class PhotoViewerActivity : AppCompatActivity() {
                 updateCounter(position)
             }
         })
+    }
+
+    private fun deleteCurrentPhoto() {
+        val photo = photos.getOrNull(currentPos) ?: return
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setMessage(getString(R.string.delete_confirm, 1))
+            .setPositiveButton(R.string.delete) { _, _ ->
+                lifecycleScope.launch { performDelete(photo) }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private suspend fun performDelete(photo: Photo) {
+        val deleted = withContext(Dispatchers.IO) {
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val pi = MediaStore.createDeleteRequest(contentResolver,
+                        listOf(ContentUris.withAppendedId(
+                            MediaStore.Images.Media.EXTERNAL_CONTENT_URI, photo.id)))
+                    startIntentSenderForResult(pi.intentSender, 42, null, 0, 0, 0)
+                    true // result handled in onActivityResult
+                } else {
+                    contentResolver.delete(photo.uri, null, null) > 0
+                }
+            }.getOrDefault(false)
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R && deleted) {
+            val newPhotos = photos.toMutableList().also { it.removeAt(currentPos) }
+            PhotoViewerActivity.photosCache = newPhotos
+            if (newPhotos.isEmpty()) { finish(); return }
+            photos = newPhotos
+            currentPos = currentPos.coerceAtMost(newPhotos.size - 1)
+            b.viewPager.adapter?.notifyDataSetChanged()
+            updateCounter(currentPos)
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 42 && resultCode == RESULT_OK) {
+            // Photo deleted via system dialog on API 30+
+            val newPhotos = photos.toMutableList().also { it.removeAt(currentPos) }
+            PhotoViewerActivity.photosCache = newPhotos
+            if (newPhotos.isEmpty()) { finish(); return }
+            photos = newPhotos
+            currentPos = currentPos.coerceAtMost(newPhotos.size - 1)
+            b.viewPager.adapter?.notifyDataSetChanged()
+            updateCounter(currentPos)
+        }
     }
 
     private fun updateCounter(pos: Int) {

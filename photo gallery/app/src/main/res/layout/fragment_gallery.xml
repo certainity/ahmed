@@ -172,6 +172,7 @@
             android:textSize="14sp" />
 
         <ImageButton
+            android:id="@+id/btnSelShare"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:src="@drawable/ic_share"
@@ -179,6 +180,7 @@
             android:tint="@color/white" />
 
         <ImageButton
+            android:id="@+id/btnSelDelete"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:src="@drawable/ic_delete"

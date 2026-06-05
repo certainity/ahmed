@@ -38,6 +38,9 @@ class GalleryAdapter(
 
     fun getSelectedCount() = selected.size
 
+    fun getSelectedPhotos(photos: List<Photo>): List<Photo> =
+        photos.filter { selected.contains(it.id) }
+
     inner class PhotoVH(private val b: ItemPhotoBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(photo: Photo) {
             Glide.with(b.root)

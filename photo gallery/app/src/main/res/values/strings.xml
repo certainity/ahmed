@@ -5,14 +5,53 @@
     <string name="edit_photo">Edit Photo</string>
     <string name="reset">Reset</string>
     <string name="save">Save</string>
+
+    <!-- Editor tabs -->
     <string name="tab_filter">Filter</string>
     <string name="tab_adjust">Adjust</string>
+    <string name="tab_crop">Crop</string>
     <string name="tab_transform">Transform</string>
-    <string name="brightness">Brightness</string>
-    <string name="contrast">Contrast</string>
-    <string name="saturation">Saturation</string>
-    <string name="warmth">Warmth</string>
+
+    <!-- Adjust sliders -->
+    <string name="adj_exposure">Exposure</string>
+    <string name="adj_brightness">Brightness</string>
+    <string name="adj_contrast">Contrast</string>
+    <string name="adj_highlights">Highlights</string>
+    <string name="adj_shadows">Shadows</string>
+    <string name="adj_saturation">Saturation</string>
+    <string name="adj_vibrance">Vibrance</string>
+    <string name="adj_temperature">Temp</string>
+    <string name="adj_tint">Tint</string>
+    <string name="adj_sharpness">Sharpness</string>
+    <string name="adj_vignette">Vignette</string>
+    <string name="adj_grain">Grain</string>
+    <string name="adj_fade">Fade</string>
+
+    <!-- Crop -->
+    <string name="crop_free">Free</string>
+    <string name="crop_original">Original</string>
+    <string name="crop_1_1">1:1</string>
+    <string name="crop_4_3">4:3</string>
+    <string name="crop_3_4">3:4</string>
+    <string name="crop_16_9">16:9</string>
+    <string name="crop_9_16">9:16</string>
+    <string name="crop_straighten">Straighten</string>
+    <string name="crop_apply">Apply</string>
+
+    <!-- Transform -->
     <string name="rotate">Rotate</string>
     <string name="flip_h">Flip H</string>
     <string name="flip_v">Flip V</string>
+
+    <!-- Intensity -->
+    <string name="intensity">Intensity</string>
+
+    <!-- Gallery -->
+    <string name="photos">photos</string>
+    <string name="selected">selected</string>
+    <string name="delete_confirm">Delete %1$d photo(s)?</string>
+    <string name="delete">Delete</string>
+    <string name="cancel">Cancel</string>
+    <string name="saved">Saved to gallery</string>
+    <string name="save_failed">Save failed</string>
 </resources>

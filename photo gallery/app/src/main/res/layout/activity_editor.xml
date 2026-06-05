@@ -13,7 +13,8 @@
         android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="4dp"
+        android:paddingStart="4dp"
+        android:paddingEnd="4dp"
         android:background="@color/bg"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
@@ -21,21 +22,33 @@
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_arrow_back"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:tint="@color/white" />
 
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:gravity="center"
-            android:text="@string/edit_photo"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+        <ImageButton
+            android:id="@+id/btnUndo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_undo"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/white"
+            android:alpha="0.35"
+            android:layout_marginStart="2dp" />
+
+        <ImageButton
+            android:id="@+id/btnRedo"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_redo"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:tint="@color/white"
+            android:alpha="0.35"
+            android:layout_marginStart="2dp" />
+
+        <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
 
         <TextView
             android:id="@+id/btnReset"
@@ -55,12 +68,11 @@
             android:textColor="@color/white"
             android:backgroundTint="@color/accent"
             android:layout_marginEnd="4dp"
-            style="@style/Widget.Material3.Button"
-            android:minWidth="72dp" />
+            android:minWidth="64dp" />
 
     </LinearLayout>
 
-    <!-- ── Photo display ── -->
+    <!-- ── Photo canvas ── -->
     <FrameLayout
         android:id="@+id/photoFrame"
         android:layout_width="0dp"
@@ -76,6 +88,13 @@
             android:layout_height="match_parent"
             android:scaleType="fitCenter"
             android:padding="4dp" />
+
+        <!-- CropOverlayView — shown only in Crop mode -->
+        <com.ahmed.photogallery.ui.editor.widget.CropOverlayView
+            android:id="@+id/cropOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
 
         <!-- Hold-to-compare hint -->
         <TextView
@@ -111,211 +130,280 @@
     <LinearLayout
         android:id="@+id/bottomPanel"
         android:layout_width="0dp"
-        android:layout_height="280dp"
+        android:layout_height="290dp"
         android:orientation="vertical"
         android:background="@color/surface"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Tab strip -->
+        <!-- Tab strip: Filter | Adjust | Crop | Transform -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/btnFilter"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="@string/tab_filter"
-                android:textColor="@color/white"
-                android:textSize="13sp"
+            <TextView android:id="@+id/btnFilter"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:gravity="center" android:text="@string/tab_filter"
+                android:textColor="@color/white" android:textSize="12sp"
                 android:background="?attr/selectableItemBackground" />
 
-            <View android:layout_width="1dp" android:layout_height="24dp"
-                android:layout_gravity="center_vertical"
-                android:background="@color/divider" />
+            <View android:layout_width="1dp" android:layout_height="20dp"
+                android:layout_gravity="center_vertical" android:background="@color/divider" />
 
-            <TextView
-                android:id="@+id/btnAdjust"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="@string/tab_adjust"
-                android:textColor="@color/white"
-                android:textSize="13sp"
+            <TextView android:id="@+id/btnAdjust"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:gravity="center" android:text="@string/tab_adjust"
+                android:textColor="@color/white" android:textSize="12sp"
                 android:background="?attr/selectableItemBackground" />
 
-            <View android:layout_width="1dp" android:layout_height="24dp"
-                android:layout_gravity="center_vertical"
-                android:background="@color/divider" />
+            <View android:layout_width="1dp" android:layout_height="20dp"
+                android:layout_gravity="center_vertical" android:background="@color/divider" />
 
-            <TextView
-                android:id="@+id/btnTransform"
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:text="@string/tab_transform"
-                android:textColor="@color/white"
-                android:textSize="13sp"
+            <TextView android:id="@+id/btnCrop"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:gravity="center" android:text="@string/tab_crop"
+                android:textColor="@color/white" android:textSize="12sp"
+                android:background="?attr/selectableItemBackground" />
+
+            <View android:layout_width="1dp" android:layout_height="20dp"
+                android:layout_gravity="center_vertical" android:background="@color/divider" />
+
+            <TextView android:id="@+id/btnTransform"
+                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:gravity="center" android:text="@string/tab_transform"
+                android:textColor="@color/white" android:textSize="12sp"
                 android:background="?attr/selectableItemBackground" />
 
         </LinearLayout>
 
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="@color/divider" />
+        <View android:layout_width="match_parent" android:layout_height="1dp"
+            android:background="@color/divider" />
 
-        <!-- ── FILTER PANEL ── -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvFilters"
+        <!-- Content area: panels stacked, only one visible at a time -->
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:paddingVertical="12dp"
-            android:paddingHorizontal="8dp"
-            android:clipToPadding="false" />
+            android:layout_height="0dp"
+            android:layout_weight="1">
 
-        <!-- ── ADJUST PANEL ── -->
-        <ScrollView
-            android:id="@+id/panelAdjust"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone"
-            android:paddingHorizontal="20dp"
-            android:paddingTop="8dp"
-            android:clipToPadding="false">
-
+            <!-- FILTER PANEL -->
             <LinearLayout
+                android:id="@+id/panelFilter"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:orientation="vertical">
 
-                <!-- Brightness -->
-                <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
-                    android:orientation="horizontal" android:gravity="center_vertical"
-                    android:layout_marginBottom="4dp">
-                    <TextView android:layout_width="80dp" android:layout_height="wrap_content"
-                        android:text="@string/brightness" android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                    <SeekBar android:id="@+id/seekBrightness"
-                        android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:max="100"
-                        android:progressTint="@color/accent" android:thumbTint="@color/accent" />
-                    <TextView android:id="@+id/valBrightness"
-                        android:layout_width="32dp" android:layout_height="wrap_content"
-                        android:gravity="end" android:text="0"
-                        android:textColor="@color/white" android:textSize="11sp"
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvFilters"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:paddingVertical="10dp"
+                    android:paddingHorizontal="8dp"
+                    android:clipToPadding="false" />
+
+                <!-- Intensity slider -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="4dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/intensity"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp"
+                        android:layout_marginEnd="8dp" />
+
+                    <SeekBar
+                        android:id="@+id/seekIntensity"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:progress="100"
+                        android:progressTint="@color/accent"
+                        android:thumbTint="@color/accent" />
+
+                    <TextView
+                        android:id="@+id/valIntensity"
+                        android:layout_width="32dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="100"
+                        android:textColor="@color/white"
+                        android:textSize="11sp"
+                        android:layout_marginStart="8dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ADJUST PANEL -->
+            <ScrollView
+                android:id="@+id/panelAdjust"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"
+                android:paddingTop="4dp"
+                android:clipToPadding="false">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="8dp">
+
+                    <!-- Each row: label | seekbar | value -->
+
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowExposure" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowBrightness" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowContrast" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowHighlights" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowShadows" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowSaturation" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowVibrance" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowTemperature" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowTint" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowSharpness" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowVignette" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowGrain" />
+                    <include layout="@layout/item_adj_row" android:id="@+id/rowFade" />
+
+                </LinearLayout>
+            </ScrollView>
+
+            <!-- CROP PANEL -->
+            <LinearLayout
+                android:id="@+id/panelCrop"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- Aspect ratio chips -->
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:scrollbars="none"
+                    android:paddingHorizontal="8dp">
+
+                    <LinearLayout
+                        android:id="@+id/chipGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
+
+                        <!-- chips added programmatically -->
+
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <!-- Straighten slider -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingTop="12dp">
+
+                    <TextView
+                        android:layout_width="72dp"
+                        android:layout_height="wrap_content"
+                        android:text="@string/crop_straighten"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+
+                    <SeekBar
+                        android:id="@+id/seekStraighten"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="90"
+                        android:progress="45"
+                        android:progressTint="@color/accent"
+                        android:thumbTint="@color/accent" />
+
+                    <TextView
+                        android:id="@+id/valStraighten"
+                        android:layout_width="36dp"
+                        android:layout_height="wrap_content"
+                        android:gravity="end"
+                        android:text="0°"
+                        android:textColor="@color/white"
+                        android:textSize="11sp"
                         android:layout_marginStart="8dp" />
                 </LinearLayout>
 
-                <!-- Contrast -->
-                <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
-                    android:orientation="horizontal" android:gravity="center_vertical"
-                    android:layout_marginBottom="4dp">
-                    <TextView android:layout_width="80dp" android:layout_height="wrap_content"
-                        android:text="@string/contrast" android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                    <SeekBar android:id="@+id/seekContrast"
-                        android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:max="100"
-                        android:progressTint="@color/accent" android:thumbTint="@color/accent" />
-                    <TextView android:id="@+id/valContrast"
-                        android:layout_width="32dp" android:layout_height="wrap_content"
-                        android:gravity="end" android:text="0"
-                        android:textColor="@color/white" android:textSize="11sp"
-                        android:layout_marginStart="8dp" />
+                <!-- Apply crop button -->
+                <Button
+                    android:id="@+id/btnApplyCrop"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/crop_apply"
+                    android:textColor="@color/white"
+                    android:backgroundTint="@color/accent"
+                    android:minWidth="100dp" />
+
+            </LinearLayout>
+
+            <!-- TRANSFORM PANEL -->
+            <LinearLayout
+                android:id="@+id/panelTransform"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:visibility="gone">
+
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical" android:gravity="center"
+                    android:id="@+id/btnRotate" android:padding="10dp"
+                    android:background="?attr/selectableItemBackground">
+                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
+                        android:src="@drawable/ic_rotate" android:tint="@color/white" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/rotate" android:textColor="@color/text_secondary"
+                        android:textSize="11sp" android:layout_marginTop="4dp" />
                 </LinearLayout>
 
-                <!-- Saturation -->
-                <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
-                    android:orientation="horizontal" android:gravity="center_vertical"
-                    android:layout_marginBottom="4dp">
-                    <TextView android:layout_width="80dp" android:layout_height="wrap_content"
-                        android:text="@string/saturation" android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                    <SeekBar android:id="@+id/seekSaturation"
-                        android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:max="100"
-                        android:progressTint="@color/accent" android:thumbTint="@color/accent" />
-                    <TextView android:id="@+id/valSaturation"
-                        android:layout_width="32dp" android:layout_height="wrap_content"
-                        android:gravity="end" android:text="0"
-                        android:textColor="@color/white" android:textSize="11sp"
-                        android:layout_marginStart="8dp" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical" android:gravity="center"
+                    android:id="@+id/btnFlipH" android:padding="10dp"
+                    android:background="?attr/selectableItemBackground">
+                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
+                        android:src="@drawable/ic_flip_h" android:tint="@color/white" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/flip_h" android:textColor="@color/text_secondary"
+                        android:textSize="11sp" android:layout_marginTop="4dp" />
                 </LinearLayout>
 
-                <!-- Warmth -->
-                <LinearLayout android:layout_width="match_parent" android:layout_height="44dp"
-                    android:orientation="horizontal" android:gravity="center_vertical">
-                    <TextView android:layout_width="80dp" android:layout_height="wrap_content"
-                        android:text="@string/warmth" android:textColor="@color/text_secondary"
-                        android:textSize="12sp" />
-                    <SeekBar android:id="@+id/seekWarmth"
-                        android:layout_width="0dp" android:layout_height="wrap_content"
-                        android:layout_weight="1" android:max="100"
-                        android:progressTint="@color/accent" android:thumbTint="@color/accent" />
-                    <TextView android:id="@+id/valWarmth"
-                        android:layout_width="32dp" android:layout_height="wrap_content"
-                        android:gravity="end" android:text="0"
-                        android:textColor="@color/white" android:textSize="11sp"
-                        android:layout_marginStart="8dp" />
+                <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1" android:orientation="vertical" android:gravity="center"
+                    android:id="@+id/btnFlipV" android:padding="10dp"
+                    android:background="?attr/selectableItemBackground">
+                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
+                        android:src="@drawable/ic_flip_v" android:tint="@color/white" />
+                    <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                        android:text="@string/flip_v" android:textColor="@color/text_secondary"
+                        android:textSize="11sp" android:layout_marginTop="4dp" />
                 </LinearLayout>
 
             </LinearLayout>
-        </ScrollView>
 
-        <!-- ── TRANSFORM PANEL ── -->
-        <LinearLayout
-            android:id="@+id/panelTransform"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="horizontal"
-            android:gravity="center"
-            android:visibility="gone">
-
-            <!-- Rotate -->
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                android:id="@+id/btnRotate" android:padding="8dp"
-                android:background="?attr/selectableItemBackground">
-                <ImageView android:layout_width="36dp" android:layout_height="36dp"
-                    android:src="@drawable/ic_rotate" android:tint="@color/white" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/rotate" android:textColor="@color/text_secondary"
-                    android:textSize="11sp" android:layout_marginTop="4dp" />
-            </LinearLayout>
-
-            <!-- Flip H -->
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                android:id="@+id/btnFlipH" android:padding="8dp"
-                android:background="?attr/selectableItemBackground">
-                <ImageView android:layout_width="36dp" android:layout_height="36dp"
-                    android:src="@drawable/ic_flip_h" android:tint="@color/white" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/flip_h" android:textColor="@color/text_secondary"
-                    android:textSize="11sp" android:layout_marginTop="4dp" />
-            </LinearLayout>
-
-            <!-- Flip V -->
-            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
-                android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                android:id="@+id/btnFlipV" android:padding="8dp"
-                android:background="?attr/selectableItemBackground">
-                <ImageView android:layout_width="36dp" android:layout_height="36dp"
-                    android:src="@drawable/ic_flip_v" android:tint="@color/white" />
-                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                    android:text="@string/flip_v" android:textColor="@color/text_secondary"
-                    android:textSize="11sp" android:layout_marginTop="4dp" />
-            </LinearLayout>
-
-        </LinearLayout>
+        </FrameLayout>
 
     </LinearLayout>
-
-    <!-- panelFilter is rvFilters (shown by default) -->
 
 </androidx.constraintlayout.widget.ConstraintLayout>
