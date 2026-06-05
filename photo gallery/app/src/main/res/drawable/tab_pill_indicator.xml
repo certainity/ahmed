@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Outer glow ring -->
+    <!-- Outer glow -->
     <item>
         <shape android:shape="rectangle">
-            <stroke android:width="2dp" android:color="@color/accent_glow" />
-            <solid android:color="@android:color/transparent" />
+            <solid android:color="@color/accent_glow" />
             <corners android:radius="18dp" />
         </shape>
     </item>
-    <!-- Inner accent ring -->
+    <!-- Inner gradient pill -->
     <item android:left="2dp" android:top="2dp" android:right="2dp" android:bottom="2dp">
         <shape android:shape="rectangle">
-            <stroke android:width="2dp" android:color="@color/accent" />
-            <solid android:color="@android:color/transparent" />
+            <gradient
+                android:startColor="@color/accent_2"
+                android:endColor="@color/accent"
+                android:angle="0" />
             <corners android:radius="16dp" />
         </shape>
     </item>

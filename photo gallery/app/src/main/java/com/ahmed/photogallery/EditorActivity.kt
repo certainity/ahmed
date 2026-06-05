@@ -220,14 +220,14 @@ class EditorActivity : AppCompatActivity() {
         AspectRatio.values().forEachIndexed { i, ar ->
             val chip = TextView(this).apply {
                 text = ar.label
-                textSize = 11f
-                setPadding(20, 8, 20, 8)
+                textSize = 12f
+                setPadding(36, 14, 36, 14)
                 setTextColor(getColor(R.color.white))
                 background = getDrawable(R.drawable.chip_default_bg)
                 layoutParams = LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
-                ).also { it.marginEnd = 8 }
+                ).also { it.marginEnd = 12 }
             }
             chip.setOnClickListener { selectAspectRatio(ar, i) }
             b.chipGroup.addView(chip)
@@ -293,7 +293,13 @@ class EditorActivity : AppCompatActivity() {
     private fun selectTab(tab: Tab) {
         currentTab = tab
         listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform)
-            .forEachIndexed { i, tv -> tv.alpha = if (tab.ordinal == i) 1f else 0.45f }
+            .forEachIndexed { i, tv ->
+                val active = tab.ordinal == i
+                tv.setBackgroundResource(
+                    if (active) R.drawable.tab_pill_indicator else R.drawable.tab_pill_inactive
+                )
+                tv.setTextColor(getColor(if (active) R.color.white else R.color.text_secondary))
+            }
         listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform)
             .forEachIndexed { i, pv -> pv.visibility = if (tab.ordinal == i) View.VISIBLE else View.GONE }
 

@@ -13,8 +13,9 @@ android {
         applicationId "com.ahmed.photogallery"
         minSdk 24
         targetSdk 34
-        versionCode 3
-        versionName "2.0"
+        versionCode 4
+        versionName "2.1"
+        resConfigs "en"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -46,15 +47,13 @@ android {
         viewBinding true
     }
     packagingOptions {
-        resources {
-            excludes += [
-                'META-INF/*.kotlin_module',
-                'kotlin/**',
-                'DebugProbesKt.bin',
-                'META-INF/*.version',
-                'META-INF/com/android/build/gradle/*'
-            ]
-        }
+        exclude 'META-INF/*.kotlin_module'
+        exclude 'META-INF/*.version'
+        exclude 'META-INF/*.properties'
+        exclude 'META-INF/com/android/build/gradle/app-metadata.properties'
+        exclude 'kotlin/**'
+        exclude 'kotlin-tooling-metadata.json'
+        exclude 'DebugProbesKt.bin'
     }
 }
 

@@ -22,18 +22,21 @@
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="72dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="4dp"
-        android:background="#80000000">
+        android:paddingHorizontal="8dp"
+        android:paddingTop="8dp"
+        android:background="@drawable/scrim_top">
 
         <ImageButton
             android:id="@+id/btnBack"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:padding="9dp"
             android:src="@drawable/ic_arrow_back"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:scaleType="fitCenter"
+            android:background="@drawable/bg_floating_icon"
             android:tint="@color/white" />
 
         <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
@@ -42,8 +45,9 @@
             android:id="@+id/tvCounter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:textAppearance="@style/TextAppearance.PG.Body"
             android:textColor="@color/white"
-            android:textSize="14sp"
             android:visibility="gone" />
 
     </LinearLayout>
@@ -52,11 +56,12 @@
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
-        android:layout_height="64dp"
+        android:layout_height="92dp"
         android:layout_gravity="bottom"
         android:orientation="horizontal"
         android:gravity="center"
-        android:background="#80000000">
+        android:paddingBottom="10dp"
+        android:background="@drawable/scrim_bottom">
 
         <LinearLayout
             android:layout_width="0dp"
@@ -67,17 +72,20 @@
             android:id="@+id/btnShare">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:padding="11dp"
                 android:src="@drawable/ic_share"
+                android:scaleType="fitCenter"
+                android:background="@drawable/bg_floating_icon"
                 android:tint="@color/white" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Share"
+                android:textAppearance="@style/TextAppearance.PG.Caption"
                 android:textColor="@color/white"
-                android:textSize="10sp"
-                android:layout_marginTop="2dp" />
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -89,17 +97,20 @@
             android:id="@+id/btnEdit">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:padding="14dp"
                 android:src="@drawable/ic_edit"
-                android:tint="@color/accent" />
+                android:scaleType="fitCenter"
+                android:background="@drawable/bg_gradient_accent"
+                android:tint="@color/white" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Edit"
+                android:textAppearance="@style/TextAppearance.PG.Caption"
                 android:textColor="@color/accent"
-                android:textSize="10sp"
-                android:layout_marginTop="2dp" />
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -111,17 +122,20 @@
             android:id="@+id/btnDelete">
 
             <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:padding="11dp"
                 android:src="@drawable/ic_delete"
+                android:scaleType="fitCenter"
+                android:background="@drawable/bg_floating_icon"
                 android:tint="@color/white" />
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Delete"
+                android:textAppearance="@style/TextAppearance.PG.Caption"
                 android:textColor="@color/white"
-                android:textSize="10sp"
-                android:layout_marginTop="2dp" />
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
     </LinearLayout>

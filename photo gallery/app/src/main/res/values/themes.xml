@@ -4,8 +4,10 @@
     <style name="Theme.PolishGallery" parent="Theme.Material3.Dark.NoActionBar">
         <item name="colorPrimary">@color/accent</item>
         <item name="colorPrimaryVariant">@color/accent</item>
+        <item name="colorSecondary">@color/accent_2</item>
         <item name="colorOnPrimary">@color/white</item>
         <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
         <item name="android:windowBackground">@color/bg</item>
         <item name="android:statusBarColor">@color/bg</item>
         <item name="android:navigationBarColor">@color/bg</item>

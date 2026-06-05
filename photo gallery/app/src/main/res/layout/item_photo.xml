@@ -2,28 +2,28 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="1dp">
+    android:padding="3dp">
 
     <ImageView
         android:id="@+id/ivPhoto"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:scaleType="centerCrop"
-        android:background="@color/surface" />
+        android:background="@drawable/bg_filter_thumb" />
 
     <View
         android:id="@+id/overlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="#99C849FF"
+        android:background="@drawable/bg_selection_overlay"
         android:visibility="gone" />
 
     <ImageView
         android:id="@+id/ivCheck"
-        android:layout_width="22dp"
-        android:layout_height="22dp"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
         android:layout_gravity="top|end"
-        android:layout_margin="6dp"
+        android:layout_margin="8dp"
         android:src="@drawable/ic_check_circle"
         android:tint="@color/white"
         android:visibility="gone" />

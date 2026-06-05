@@ -44,8 +44,9 @@ class CropOverlayView @JvmOverloads constructor(
         color = 0xBB000000.toInt()
         style = Paint.Style.FILL
     }
+    private val accentColor = context.getColor(com.ahmed.photogallery.R.color.accent)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFFFFF.toInt()
+        color = accentColor
         style = Paint.Style.STROKE
         strokeWidth = 2f * resources.displayMetrics.density
     }
@@ -55,7 +56,7 @@ class CropOverlayView @JvmOverloads constructor(
         strokeWidth = 1f * resources.displayMetrics.density
     }
     private val handlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFFFFFF.toInt()
+        color = accentColor
         style = Paint.Style.FILL
     }
 

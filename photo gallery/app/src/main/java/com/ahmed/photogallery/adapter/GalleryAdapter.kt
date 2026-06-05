@@ -10,6 +10,8 @@ import com.ahmed.photogallery.databinding.ItemPhotoBinding
 import com.ahmed.photogallery.model.Photo
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
+import com.bumptech.glide.load.resource.bitmap.CenterCrop
+import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 
 class GalleryAdapter(
     private val onPhotoClick: (Photo, Int) -> Unit,
@@ -43,10 +45,11 @@ class GalleryAdapter(
 
     inner class PhotoVH(private val b: ItemPhotoBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(photo: Photo) {
+            val radius = (14 * b.root.resources.displayMetrics.density).toInt()
             Glide.with(b.root)
                 .load(photo.uri)
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
-                .centerCrop()
+                .transform(CenterCrop(), RoundedCorners(radius))
                 .into(b.ivPhoto)
 
             val isSel = selected.contains(photo.id)

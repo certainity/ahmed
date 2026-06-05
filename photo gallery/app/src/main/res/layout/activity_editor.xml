@@ -62,12 +62,12 @@
 
         <Button
             android:id="@+id/btnSave"
+            style="@style/Widget.PG.Button.Pill"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="38dp"
             android:text="@string/save"
-            android:textColor="@color/white"
-            android:backgroundTint="@color/accent"
-            android:layout_marginEnd="4dp"
+            android:layout_marginEnd="6dp"
+            android:paddingHorizontal="20dp"
             android:minWidth="64dp" />
 
     </LinearLayout>
@@ -104,11 +104,11 @@
             android:layout_gravity="bottom|center_horizontal"
             android:layout_marginBottom="10dp"
             android:text="Hold to compare original"
-            android:textColor="#AAFFFFFF"
+            android:textColor="@color/white"
             android:textSize="12sp"
-            android:background="#55000000"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="4dp"
+            android:background="@drawable/bg_value_chip"
+            android:paddingHorizontal="14dp"
+            android:paddingVertical="6dp"
             android:visibility="gone" />
 
         <!-- Loading overlay -->
@@ -130,9 +130,10 @@
     <LinearLayout
         android:id="@+id/bottomPanel"
         android:layout_width="0dp"
-        android:layout_height="290dp"
+        android:layout_height="300dp"
         android:orientation="vertical"
-        android:background="@color/surface"
+        android:background="@drawable/bg_glass_panel"
+        android:elevation="12dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
@@ -140,46 +141,40 @@
         <!-- Tab strip: Filter | Adjust | Crop | Transform -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:orientation="horizontal">
+            android:layout_height="52dp"
+            android:orientation="horizontal"
+            android:paddingHorizontal="8dp"
+            android:paddingTop="8dp">
 
             <TextView android:id="@+id/btnFilter"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:layout_margin="4dp"
                 android:gravity="center" android:text="@string/tab_filter"
-                android:textColor="@color/white" android:textSize="12sp"
-                android:background="?attr/selectableItemBackground" />
-
-            <View android:layout_width="1dp" android:layout_height="20dp"
-                android:layout_gravity="center_vertical" android:background="@color/divider" />
+                android:textAppearance="@style/TextAppearance.PG.TabActive"
+                android:background="@drawable/tab_pill_inactive" />
 
             <TextView android:id="@+id/btnAdjust"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:layout_margin="4dp"
                 android:gravity="center" android:text="@string/tab_adjust"
-                android:textColor="@color/white" android:textSize="12sp"
-                android:background="?attr/selectableItemBackground" />
-
-            <View android:layout_width="1dp" android:layout_height="20dp"
-                android:layout_gravity="center_vertical" android:background="@color/divider" />
+                android:textAppearance="@style/TextAppearance.PG.TabActive"
+                android:background="@drawable/tab_pill_inactive" />
 
             <TextView android:id="@+id/btnCrop"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:layout_margin="4dp"
                 android:gravity="center" android:text="@string/tab_crop"
-                android:textColor="@color/white" android:textSize="12sp"
-                android:background="?attr/selectableItemBackground" />
-
-            <View android:layout_width="1dp" android:layout_height="20dp"
-                android:layout_gravity="center_vertical" android:background="@color/divider" />
+                android:textAppearance="@style/TextAppearance.PG.TabActive"
+                android:background="@drawable/tab_pill_inactive" />
 
             <TextView android:id="@+id/btnTransform"
                 android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+                android:layout_margin="4dp"
                 android:gravity="center" android:text="@string/tab_transform"
-                android:textColor="@color/white" android:textSize="12sp"
-                android:background="?attr/selectableItemBackground" />
+                android:textAppearance="@style/TextAppearance.PG.TabActive"
+                android:background="@drawable/tab_pill_inactive" />
 
         </LinearLayout>
-
-        <View android:layout_width="match_parent" android:layout_height="1dp"
-            android:background="@color/divider" />
 
         <!-- Content area: panels stacked, only one visible at a time -->
         <FrameLayout
@@ -206,39 +201,40 @@
                 <!-- Intensity slider -->
                 <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
+                    android:layout_height="52dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
                     android:paddingHorizontal="16dp"
-                    android:paddingBottom="4dp">
+                    android:paddingBottom="6dp">
 
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/intensity"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11sp"
-                        android:layout_marginEnd="8dp" />
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginEnd="10dp" />
 
                     <SeekBar
                         android:id="@+id/seekIntensity"
+                        style="@style/Widget.PG.SeekBar"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:max="100"
-                        android:progress="100"
-                        android:progressTint="@color/accent"
-                        android:thumbTint="@color/accent" />
+                        android:progress="100" />
 
                     <TextView
                         android:id="@+id/valIntensity"
-                        android:layout_width="32dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:gravity="end"
+                        android:minWidth="36dp"
+                        android:gravity="center"
                         android:text="100"
-                        android:textColor="@color/white"
-                        android:textSize="11sp"
-                        android:layout_marginStart="8dp" />
+                        android:textAppearance="@style/TextAppearance.PG.Value"
+                        android:background="@drawable/bg_value_chip"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:layout_marginStart="10dp" />
                 </LinearLayout>
             </LinearLayout>
 
@@ -320,41 +316,42 @@
                         android:layout_width="72dp"
                         android:layout_height="wrap_content"
                         android:text="@string/crop_straighten"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="11sp" />
+                        android:textAppearance="@style/TextAppearance.PG.Caption" />
 
                     <SeekBar
                         android:id="@+id/seekStraighten"
+                        style="@style/Widget.PG.SeekBar"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:max="90"
-                        android:progress="45"
-                        android:progressTint="@color/accent"
-                        android:thumbTint="@color/accent" />
+                        android:progress="45" />
 
                     <TextView
                         android:id="@+id/valStraighten"
-                        android:layout_width="36dp"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:gravity="end"
+                        android:minWidth="40dp"
+                        android:gravity="center"
                         android:text="0°"
-                        android:textColor="@color/white"
-                        android:textSize="11sp"
-                        android:layout_marginStart="8dp" />
+                        android:textAppearance="@style/TextAppearance.PG.Value"
+                        android:background="@drawable/bg_value_chip"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:layout_marginStart="10dp" />
                 </LinearLayout>
 
                 <!-- Apply crop button -->
                 <Button
                     android:id="@+id/btnApplyCrop"
+                    style="@style/Widget.PG.Button.Pill"
                     android:layout_width="wrap_content"
-                    android:layout_height="36dp"
+                    android:layout_height="42dp"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="16dp"
+                    android:paddingHorizontal="28dp"
                     android:text="@string/crop_apply"
-                    android:textColor="@color/white"
-                    android:backgroundTint="@color/accent"
-                    android:minWidth="100dp" />
+                    android:minWidth="120dp" />
 
             </LinearLayout>
 
@@ -369,35 +366,41 @@
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                    android:id="@+id/btnRotate" android:padding="10dp"
-                    android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
-                        android:src="@drawable/ic_rotate" android:tint="@color/white" />
+                    android:id="@+id/btnRotate" android:padding="18dp"
+                    android:layout_margin="10dp"
+                    android:background="@drawable/bg_filter_thumb">
+                    <ImageView android:layout_width="34dp" android:layout_height="34dp"
+                        android:src="@drawable/ic_rotate" android:tint="@color/accent" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/rotate" android:textColor="@color/text_secondary"
-                        android:textSize="11sp" android:layout_marginTop="4dp" />
+                        android:text="@string/rotate"
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginTop="8dp" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                    android:id="@+id/btnFlipH" android:padding="10dp"
-                    android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
-                        android:src="@drawable/ic_flip_h" android:tint="@color/white" />
+                    android:id="@+id/btnFlipH" android:padding="18dp"
+                    android:layout_margin="10dp"
+                    android:background="@drawable/bg_filter_thumb">
+                    <ImageView android:layout_width="34dp" android:layout_height="34dp"
+                        android:src="@drawable/ic_flip_h" android:tint="@color/accent" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/flip_h" android:textColor="@color/text_secondary"
-                        android:textSize="11sp" android:layout_marginTop="4dp" />
+                        android:text="@string/flip_h"
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginTop="8dp" />
                 </LinearLayout>
 
                 <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content"
                     android:layout_weight="1" android:orientation="vertical" android:gravity="center"
-                    android:id="@+id/btnFlipV" android:padding="10dp"
-                    android:background="?attr/selectableItemBackground">
-                    <ImageView android:layout_width="32dp" android:layout_height="32dp"
-                        android:src="@drawable/ic_flip_v" android:tint="@color/white" />
+                    android:id="@+id/btnFlipV" android:padding="18dp"
+                    android:layout_margin="10dp"
+                    android:background="@drawable/bg_filter_thumb">
+                    <ImageView android:layout_width="34dp" android:layout_height="34dp"
+                        android:src="@drawable/ic_flip_v" android:tint="@color/accent" />
                     <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
-                        android:text="@string/flip_v" android:textColor="@color/text_secondary"
-                        android:textSize="11sp" android:layout_marginTop="4dp" />
+                        android:text="@string/flip_v"
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginTop="8dp" />
                 </LinearLayout>
 
             </LinearLayout>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="80dp"
+    android:layout_width="84dp"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:gravity="center_horizontal"
@@ -8,18 +8,17 @@
 
     <ImageView
         android:id="@+id/ivPreview"
-        android:layout_width="68dp"
-        android:layout_height="68dp"
+        android:layout_width="72dp"
+        android:layout_height="72dp"
         android:scaleType="centerCrop"
-        android:background="@color/surface" />
+        android:background="@drawable/bg_filter_thumb" />
 
     <TextView
         android:id="@+id/tvName"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginTop="5dp"
-        android:textColor="@color/text_secondary"
-        android:textSize="11sp"
+        android:layout_marginTop="6dp"
+        android:textAppearance="@style/TextAppearance.PG.Caption"
         android:maxLines="1" />
 
 </LinearLayout>

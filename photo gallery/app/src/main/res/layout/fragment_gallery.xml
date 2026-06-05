@@ -27,17 +27,13 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Polish Gallery"
-            android:textColor="@color/white"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.01" />
+            android:textAppearance="@style/TextAppearance.PG.Title" />
 
         <TextView
             android:id="@+id/tvPhotoCount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/text_secondary"
-            android:textSize="12sp"
+            android:textAppearance="@style/TextAppearance.PG.Caption"
             android:layout_marginEnd="4dp" />
 
     </LinearLayout>
@@ -57,7 +53,7 @@
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:clipToPadding="false"
-            android:padding="1dp"
+            android:padding="3dp"
             android:visibility="gone" />
 
         <!-- Loading -->
@@ -141,26 +137,28 @@
             <Button
                 android:id="@+id/btnGrantPermission"
                 android:layout_width="wrap_content"
-                android:layout_height="42dp"
+                android:layout_height="44dp"
                 android:layout_marginTop="20dp"
+                android:paddingHorizontal="28dp"
                 android:text="Allow Access"
-                android:textColor="@color/white"
-                android:backgroundTint="@color/accent"
-                style="@style/Widget.Material3.Button" />
+                style="@style/Widget.PG.Button.Pill" />
 
         </LinearLayout>
 
     </FrameLayout>
 
-    <!-- ── Selection action bar ── -->
+    <!-- ── Floating selection action bar ── -->
     <LinearLayout
         android:id="@+id/selectionBar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="@color/surface"
-        android:paddingHorizontal="16dp"
+        android:background="@drawable/bg_glass_pill"
+        android:layout_margin="12dp"
+        android:elevation="8dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="8dp"
         android:visibility="gone">
 
         <TextView
@@ -168,15 +166,15 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="@color/white"
-            android:textSize="14sp" />
+            android:textAppearance="@style/TextAppearance.PG.Body"
+            android:textColor="@color/white" />
 
         <ImageButton
             android:id="@+id/btnSelShare"
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:src="@drawable/ic_share"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_floating_icon"
             android:tint="@color/white" />
 
         <ImageButton
@@ -184,9 +182,9 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:src="@drawable/ic_delete"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="@drawable/bg_floating_icon"
             android:tint="@color/white"
-            android:layout_marginStart="8dp" />
+            android:layout_marginStart="10dp" />
 
     </LinearLayout>
 

@@ -1,13 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg">#0D0D0D</color>
-    <color name="surface">#1C1C1E</color>
-    <color name="accent">#FF2D78</color>
+    <!-- Core neutrals -->
+    <color name="bg">#0B0E13</color>
+    <color name="surface">#141821</color>
+    <color name="accent">#2BD9FE</color>
     <color name="white">#FFFFFF</color>
-    <color name="text_secondary">#8E8E93</color>
-    <color name="divider">#2C2C2E</color>
+    <color name="text_secondary">#8A93A6</color>
+    <color name="divider">#232A36</color>
 
     <!-- Required by launcher icon placeholder -->
-    <color name="ic_launcher_background">#FF2D78</color>
-    <color name="ic_launcher_foreground">#FFFFFF</color>
+    <color name="ic_launcher_background">#0B0E13</color>
+    <color name="ic_launcher_foreground">#2BD9FE</color>
+
+    <!-- Accent / gradient -->
+    <color name="accent_2">#1E6BFF</color>
+    <color name="accent_glow">#662BD9FE</color>
+
+    <!-- Elevated surfaces & glass -->
+    <color name="surface_elevated">#1B2130</color>
+    <color name="glass_panel">#CC121722</color>
+    <color name="glass_panel_solid">#F2121722</color>
+    <color name="glass_stroke">#26FFFFFF</color>
+    <color name="glass_hairline_top">#4DFFFFFF</color>
+
+    <!-- Viewer scrims -->
+    <color name="scrim_top">#B3000000</color>
+    <color name="scrim_bottom">#CC000000</color>
+    <color name="scrim_transparent">#00000000</color>
+
+    <!-- Text & states -->
+    <color name="on_surface">#ECEFF5</color>
+    <color name="selection_overlay">#802BD9FE</color>
+    <color name="value_chip_bg">#1F2A3A</color>
+    <color name="track_inactive">#2A3340</color>
 </resources>
