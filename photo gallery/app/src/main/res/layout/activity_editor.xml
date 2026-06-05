@@ -77,6 +77,21 @@
             android:scaleType="fitCenter"
             android:padding="4dp" />
 
+        <!-- Hold-to-compare hint -->
+        <TextView
+            android:id="@+id/tvHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|center_horizontal"
+            android:layout_marginBottom="10dp"
+            android:text="Hold to compare original"
+            android:textColor="#AAFFFFFF"
+            android:textSize="12sp"
+            android:background="#55000000"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="4dp"
+            android:visibility="gone" />
+
         <!-- Loading overlay -->
         <FrameLayout
             android:id="@+id/loading"

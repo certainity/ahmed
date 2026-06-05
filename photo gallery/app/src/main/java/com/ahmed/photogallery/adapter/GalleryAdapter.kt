@@ -22,7 +22,8 @@ class GalleryAdapter(
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoVH {
         val binding = ItemPhotoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        val size = parent.width / 3
+        val screenW = parent.context.resources.displayMetrics.widthPixels
+        val size = if (parent.width > 0) parent.width / 3 else screenW / 3
         binding.root.layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, size)
         return PhotoVH(binding)
     }

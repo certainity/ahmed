@@ -1,6 +1,7 @@
 package com.ahmed.photogallery
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.WindowManager
@@ -17,8 +18,6 @@ class PhotoViewerActivity : AppCompatActivity() {
     private var currentPos = 0
 
     companion object {
-        const val EXTRA_URI = "extra_uri"
-        const val EXTRA_NAME = "extra_name"
         const val EXTRA_PHOTOS = "extra_photos"
         const val EXTRA_POS = "extra_pos"
     }
@@ -29,58 +28,73 @@ class PhotoViewerActivity : AppCompatActivity() {
         b = ActivityPhotoViewerBinding.inflate(layoutInflater)
         setContentView(b.root)
 
-        photos = intent.getParcelableArrayListExtra<Photo>(EXTRA_PHOTOS) ?: emptyList()
+        // API-33-safe parcelable list retrieval
+        photos = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableArrayListExtra(EXTRA_PHOTOS, Photo::class.java) ?: emptyList()
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableArrayListExtra<Photo>(EXTRA_PHOTOS) ?: emptyList()
+        }
         currentPos = intent.getIntExtra(EXTRA_POS, 0)
 
-        if (photos.isEmpty()) {
-            val uri = intent.getStringExtra(EXTRA_URI) ?: run { finish(); return }
-            Glide.with(this).load(uri).into(b.photoView)
-            b.tvCounter.visibility = View.GONE
-        } else {
-            setupPager()
-        }
+        if (photos.isEmpty()) { finish(); return }
+
+        setupPager()
 
         b.btnBack.setOnClickListener { finish() }
 
         b.btnEdit.setOnClickListener {
-            val photo = photos.getOrNull(currentPos)
-            val uri = photo?.uri?.toString() ?: intent.getStringExtra(EXTRA_URI) ?: return@setOnClickListener
-            startActivity(Intent(this, EditorActivity::class.java).apply {
-                putExtra(EditorActivity.EXTRA_URI, uri)
-            })
+            photos.getOrNull(currentPos)?.let { photo ->
+                startActivity(Intent(this, EditorActivity::class.java).apply {
+                    putExtra(EditorActivity.EXTRA_URI, photo.uri.toString())
+                })
+            }
         }
 
         b.btnShare.setOnClickListener {
-            val photo = photos.getOrNull(currentPos)
-            val uri = photo?.uri ?: return@setOnClickListener
-            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
-                type = "image/*"
-                putExtra(Intent.EXTRA_STREAM, uri)
-            }, "Share"))
+            photos.getOrNull(currentPos)?.let { photo ->
+                startActivity(
+                    Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                        type = "image/*"
+                        putExtra(Intent.EXTRA_STREAM, photo.uri)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }, "Share")
+                )
+            }
         }
 
         toggleUi(true)
-        b.photoView.setOnPhotoTapListener { _, _, _ -> toggleUi(b.topBar.visibility == View.GONE) }
     }
 
     private fun setupPager() {
-        b.viewPager.visibility = View.VISIBLE
         b.photoView.visibility = View.GONE
+        b.viewPager.visibility = View.VISIBLE
 
-        val adapter = object : androidx.recyclerview.widget.RecyclerView.Adapter<PhotoPageVH>() {
+        val pagerAdapter = object :
+            androidx.recyclerview.widget.RecyclerView.Adapter<PhotoPageVH>() {
+
             override fun onCreateViewHolder(parent: android.view.ViewGroup, vt: Int): PhotoPageVH {
                 val pv = com.github.chrisbanes.photoview.PhotoView(parent.context).apply {
                     layoutParams = android.view.ViewGroup.LayoutParams(-1, -1)
+                    // When zoomed in, lock ViewPager2 so PhotoView can pan freely
+                    setOnMatrixChangeListener {
+                        b.viewPager.isUserInputEnabled = scale <= 1.05f
+                    }
+                    setOnPhotoTapListener { _, _, _ ->
+                        toggleUi(b.topBar.visibility == View.GONE)
+                    }
                 }
                 return PhotoPageVH(pv)
             }
+
             override fun onBindViewHolder(h: PhotoPageVH, pos: Int) {
                 Glide.with(h.view).load(photos[pos].uri).into(h.view)
             }
+
             override fun getItemCount() = photos.size
         }
 
-        b.viewPager.adapter = adapter
+        b.viewPager.adapter = pagerAdapter
         b.viewPager.setCurrentItem(currentPos, false)
         updateCounter(currentPos)
 
@@ -94,13 +108,13 @@ class PhotoViewerActivity : AppCompatActivity() {
 
     private fun updateCounter(pos: Int) {
         b.tvCounter.text = "${pos + 1} / ${photos.size}"
+        b.tvCounter.visibility = if (photos.size > 1) View.VISIBLE else View.GONE
     }
 
     private fun toggleUi(show: Boolean) {
         val vis = if (show) View.VISIBLE else View.GONE
         b.topBar.visibility = vis
         b.bottomBar.visibility = vis
-        b.tvCounter.visibility = if (show && photos.size > 1) View.VISIBLE else View.GONE
     }
 
     inner class PhotoPageVH(val view: com.github.chrisbanes.photoview.PhotoView) :

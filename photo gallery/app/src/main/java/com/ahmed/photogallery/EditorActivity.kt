@@ -156,6 +156,7 @@ class EditorActivity : AppCompatActivity() {
             displayed = result
             b.ivPhoto.setImageBitmap(result)
             b.loading.visibility = View.GONE
+            b.tvHint.visibility = View.VISIBLE
         }
     }
 
@@ -200,13 +201,20 @@ class EditorActivity : AppCompatActivity() {
             b.ivPhoto.setImageBitmap(flipped)
         }
 
-        // Long-press on photo to compare with original
+        // Long-press to compare with original; release to restore edit
         b.ivPhoto.setOnLongClickListener {
             b.ivPhoto.setImageBitmap(original)
+            b.tvHint.visibility = View.GONE
             true
         }
-        b.ivPhoto.setOnClickListener {
-            b.ivPhoto.setImageBitmap(displayed ?: working ?: original)
+        b.ivPhoto.setOnTouchListener { _, event ->
+            if (event.action == android.view.MotionEvent.ACTION_UP ||
+                event.action == android.view.MotionEvent.ACTION_CANCEL
+            ) {
+                val cur = displayed ?: working ?: original
+                if (b.ivPhoto.drawable != null) b.ivPhoto.setImageBitmap(cur)
+            }
+            false
         }
     }
 
