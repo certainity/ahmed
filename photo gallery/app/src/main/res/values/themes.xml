@@ -13,6 +13,12 @@
         <item name="android:navigationBarColor">@color/bg</item>
     </style>
 
+    <style name="Theme.PolishGallery.Splash" parent="Theme.PolishGallery">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowBackground">@color/bg</item>
+    </style>
+
     <style name="Theme.PolishGallery.FullScreen" parent="Theme.PolishGallery">
         <item name="android:windowFullscreen">false</item>
         <item name="android:statusBarColor">#000000</item>
