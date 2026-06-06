@@ -46,6 +46,11 @@
     <!-- Intensity -->
     <string name="intensity">Intensity</string>
 
+    <!-- Overlay + Frame tabs -->
+    <string name="tab_overlay">Overlay</string>
+    <string name="tab_frame">Frame</string>
+    <string name="frame_size">Size</string>
+
     <!-- Gallery -->
     <string name="photos">photos</string>
     <string name="selected">selected</string>

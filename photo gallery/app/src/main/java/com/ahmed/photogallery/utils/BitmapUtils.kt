@@ -10,6 +10,10 @@ import android.provider.MediaStore
 import com.ahmed.photogallery.engine.EditState
 import com.ahmed.photogallery.model.Adjustments
 import com.ahmed.photogallery.model.CropConfig
+import com.ahmed.photogallery.model.FrameConfig
+import com.ahmed.photogallery.model.FrameType
+import com.ahmed.photogallery.model.OverlayConfig
+import com.ahmed.photogallery.model.OverlayType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
@@ -42,6 +46,14 @@ object BitmapUtils {
             bmp = if (state.filterIntensity >= 0.99f) filtered
                   else blendBitmaps(bmp, filtered, state.filterIntensity)
         }
+
+        // 5. Gradient / light-leak overlay
+        if (state.overlayConfig.type != OverlayType.NONE)
+            bmp = applyGradientOverlay(bmp, state.overlayConfig)
+
+        // 6. Frame / border
+        if (state.frameConfig.type != FrameType.NONE)
+            bmp = applyFrame(bmp, state.frameConfig)
 
         return bmp
     }
@@ -295,6 +307,107 @@ object BitmapUtils {
         Canvas(dst).drawBitmap(overlay, 0f, 0f, Paint().apply {
             this.alpha = (alpha * 255).toInt().coerceIn(0, 255)
         })
+        return dst
+    }
+
+    // ── Gradient overlay ──────────────────────────────────────────────────────
+
+    private fun applyGradientOverlay(src: Bitmap, config: OverlayConfig): Bitmap {
+        val dst = src.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(dst)
+        val w = src.width.toFloat()
+        val h = src.height.toFloat()
+        val alpha = (config.intensity * 180).toInt().coerceIn(0, 255)
+
+        val colors: IntArray
+        val positions: FloatArray
+        val x0: Float; val y0: Float; val x1: Float; val y1: Float
+
+        when (config.type) {
+            OverlayType.SUNSET -> {
+                colors = intArrayOf(Color.parseColor("#FF6B35"), Color.parseColor("#FF0080"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.55f, 1f); x0=0f; y0=0f; x1=w; y1=h
+            }
+            OverlayType.NEON -> {
+                colors = intArrayOf(Color.parseColor("#2BD9FE"), Color.parseColor("#8B5CF6"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.6f, 1f); x0=0f; y0=h; x1=w; y1=0f
+            }
+            OverlayType.GOLDEN -> {
+                colors = intArrayOf(Color.parseColor("#F59E0B"), Color.parseColor("#FCD34D"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.5f, 1f); x0=0f; y0=h; x1=0f; y1=0f
+            }
+            OverlayType.OCEAN -> {
+                colors = intArrayOf(Color.parseColor("#1E6BFF"), Color.parseColor("#06B6D4"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.6f, 1f); x0=0f; y0=0f; x1=w; y1=h
+            }
+            OverlayType.DUSK -> {
+                colors = intArrayOf(Color.parseColor("#7C3AED"), Color.parseColor("#DB2777"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.7f, 1f); x0=0f; y0=0f; x1=0f; y1=h
+            }
+            OverlayType.ROSE -> {
+                colors = intArrayOf(Color.parseColor("#FB7185"), Color.parseColor("#FCA5A5"), Color.TRANSPARENT)
+                positions = floatArrayOf(0f, 0.5f, 1f); x0=w; y0=0f; x1=0f; y1=h
+            }
+            OverlayType.NONE -> return src
+        }
+
+        val shader = LinearGradient(x0, y0, x1, y1, colors, positions, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w, h, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.shader = shader
+            this.alpha = alpha
+        })
+        return dst
+    }
+
+    // ── Frame / border ────────────────────────────────────────────────────────
+
+    private fun applyFrame(src: Bitmap, config: FrameConfig): Bitmap {
+        val thick = (config.thickness * minOf(src.width, src.height)).toInt().coerceAtLeast(4)
+        return when (config.type) {
+            FrameType.THIN_WHITE  -> addSolidBorder(src, thick / 2, Color.WHITE)
+            FrameType.THICK_WHITE -> addSolidBorder(src, thick, Color.WHITE)
+            FrameType.BLACK       -> addSolidBorder(src, thick, Color.BLACK)
+            FrameType.POLAROID    -> addPolaroidFrame(src, thick)
+            FrameType.SHADOW      -> addDropShadow(src, thick)
+            FrameType.NONE        -> src
+        }
+    }
+
+    private fun addSolidBorder(src: Bitmap, border: Int, color: Int): Bitmap {
+        val dst = Bitmap.createBitmap(src.width + border * 2, src.height + border * 2, Bitmap.Config.ARGB_8888)
+        Canvas(dst).apply {
+            drawColor(color)
+            drawBitmap(src, border.toFloat(), border.toFloat(), null)
+        }
+        return dst
+    }
+
+    private fun addPolaroidFrame(src: Bitmap, thick: Int): Bitmap {
+        val side   = thick
+        val bottom = thick * 4
+        val dst = Bitmap.createBitmap(src.width + side * 2, src.height + side + bottom, Bitmap.Config.ARGB_8888)
+        Canvas(dst).apply {
+            drawColor(Color.WHITE)
+            drawRect(0f, (src.height + side).toFloat(), dst.width.toFloat(), dst.height.toFloat(),
+                Paint().apply { color = Color.parseColor("#F4EFE8") })
+            drawBitmap(src, side.toFloat(), side.toFloat(), null)
+        }
+        return dst
+    }
+
+    private fun addDropShadow(src: Bitmap, shadowSize: Int): Bitmap {
+        val pad = shadowSize
+        val dst = Bitmap.createBitmap(src.width + pad * 2, src.height + pad * 2, Bitmap.Config.ARGB_8888)
+        Canvas(dst).apply {
+            drawRect(
+                (pad + shadowSize / 3).toFloat(), (pad + shadowSize / 3).toFloat(),
+                (dst.width - pad / 3).toFloat(), (dst.height - pad / 3).toFloat(),
+                Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.parseColor("#50000000")
+                    maskFilter = BlurMaskFilter(shadowSize.toFloat(), BlurMaskFilter.Blur.NORMAL)
+                })
+            drawBitmap(src, pad.toFloat(), pad.toFloat(), null)
+        }
         return dst
     }
 

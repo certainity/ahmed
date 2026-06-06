@@ -16,7 +16,7 @@ import com.bumptech.glide.load.resource.bitmap.CenterCrop
 import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 
 class GalleryAdapter(
-    private val onPhotoClick: (Photo, Int) -> Unit,
+    private val onPhotoClick: (Photo, Int, android.view.View) -> Unit,
     private val onSelectionChanged: (Int) -> Unit
 ) : ListAdapter<GalleryItem, RecyclerView.ViewHolder>(Diff()) {
 
@@ -78,6 +78,7 @@ class GalleryAdapter(
     inner class PhotoVH(private val b: ItemPhotoBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(photo: Photo) {
             val radius = (14 * b.root.resources.displayMetrics.density).toInt()
+            b.ivPhoto.transitionName = "photo_${photo.id}"
             Glide.with(b.root)
                 .load(photo.uri)
                 .diskCacheStrategy(DiskCacheStrategy.ALL)
@@ -93,7 +94,7 @@ class GalleryAdapter(
                 else {
                     val photoIndex = currentList.filterIsInstance<GalleryItem.PhotoItem>()
                         .indexOfFirst { it.photo.id == photo.id }
-                    onPhotoClick(photo, photoIndex)
+                    onPhotoClick(photo, photoIndex, b.ivPhoto)
                 }
             }
 

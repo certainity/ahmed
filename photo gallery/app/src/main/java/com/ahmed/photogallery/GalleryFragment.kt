@@ -15,6 +15,7 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
 import androidx.appcompat.app.AlertDialog
+import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -215,13 +216,15 @@ class GalleryFragment : Fragment() {
 
     private fun setupRecycler() {
         adapter = GalleryAdapter(
-            onPhotoClick = { _, pos ->
+            onPhotoClick = { _, pos, sharedView ->
                 PhotoViewerActivity.photosCache = photos
-                startActivity(
-                    Intent(requireContext(), PhotoViewerActivity::class.java).apply {
-                        putExtra(PhotoViewerActivity.EXTRA_POS, pos)
-                    }
+                val intent = Intent(requireContext(), PhotoViewerActivity::class.java).apply {
+                    putExtra(PhotoViewerActivity.EXTRA_POS, pos)
+                }
+                val options = ActivityOptionsCompat.makeSceneTransitionAnimation(
+                    requireActivity(), sharedView, sharedView.transitionName ?: "photo_transition"
                 )
+                startActivity(intent, options.toBundle())
             },
             onSelectionChanged = { count ->
                 if (count == 0) {

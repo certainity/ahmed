@@ -4,9 +4,15 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.ContentUris
 import android.content.Intent
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
+import android.transition.ChangeBounds
+import android.transition.ChangeImageTransform
+import android.transition.TransitionSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
@@ -20,11 +26,14 @@ import androidx.viewpager2.widget.ViewPager2
 import com.ahmed.photogallery.databinding.ActivityPhotoViewerBinding
 import com.ahmed.photogallery.model.Photo
 import com.bumptech.glide.Glide
+import com.bumptech.glide.load.DataSource
+import com.bumptech.glide.load.engine.GlideException
+import com.bumptech.glide.request.RequestListener
+import com.bumptech.glide.request.target.Target
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -95,6 +104,16 @@ class PhotoViewerActivity : AppCompatActivity() {
         b = ActivityPhotoViewerBinding.inflate(layoutInflater)
         setContentView(b.root)
 
+        postponeEnterTransition()
+        window.sharedElementEnterTransition = TransitionSet().apply {
+            addTransition(ChangeBounds())
+            addTransition(ChangeImageTransform())
+            duration = 280L
+            interpolator = DecelerateInterpolator()
+        }
+        // Fallback: start transition even if Glide is slow
+        Handler(Looper.getMainLooper()).postDelayed({ startPostponedEnterTransition() }, 500L)
+
         photos = photosCache
         currentPos = intent.getIntExtra(EXTRA_POS, 0)
         if (photos.isEmpty()) { finish(); return }
@@ -148,7 +167,24 @@ class PhotoViewerActivity : AppCompatActivity() {
             }
 
             override fun onBindViewHolder(h: PhotoPageVH, pos: Int) {
-                Glide.with(h.view).load(photos[pos].uri).into(h.view)
+                val photo = photos[pos]
+                h.view.transitionName = if (pos == currentPos) "photo_${photo.id}" else null
+                Glide.with(h.view)
+                    .load(photo.uri)
+                    .listener(object : RequestListener<Drawable> {
+                        override fun onResourceReady(r: Drawable, model: Any,
+                            target: Target<Drawable>?, source: DataSource,
+                            isFirstResource: Boolean): Boolean {
+                            if (pos == currentPos) startPostponedEnterTransition()
+                            return false
+                        }
+                        override fun onLoadFailed(e: GlideException?, model: Any?,
+                            target: Target<Drawable>, isFirstResource: Boolean): Boolean {
+                            if (pos == currentPos) startPostponedEnterTransition()
+                            return false
+                        }
+                    })
+                    .into(h.view)
             }
 
             override fun getItemCount() = photos.size

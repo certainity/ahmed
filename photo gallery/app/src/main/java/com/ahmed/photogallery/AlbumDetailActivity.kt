@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityOptionsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.ahmed.photogallery.adapter.GalleryAdapter
@@ -40,13 +41,15 @@ class AlbumDetailActivity : AppCompatActivity() {
         b.btnBack.setOnClickListener { finish() }
 
         adapter = GalleryAdapter(
-            onPhotoClick = { _, pos ->
+            onPhotoClick = { _, pos, sharedView ->
                 PhotoViewerActivity.photosCache = photos
-                startActivity(
-                    Intent(this, PhotoViewerActivity::class.java).apply {
-                        putExtra(PhotoViewerActivity.EXTRA_POS, pos)
-                    }
+                val intent = Intent(this, PhotoViewerActivity::class.java).apply {
+                    putExtra(PhotoViewerActivity.EXTRA_POS, pos)
+                }
+                val options = ActivityOptionsCompat.makeSceneTransitionAnimation(
+                    this, sharedView, sharedView.transitionName ?: "photo_transition"
                 )
+                startActivity(intent, options.toBundle())
             },
             onSelectionChanged = { count ->
                 if (count == 0) adapter.clearSelection()

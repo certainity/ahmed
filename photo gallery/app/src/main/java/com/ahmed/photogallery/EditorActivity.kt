@@ -22,7 +22,11 @@ import com.ahmed.photogallery.databinding.ItemAdjRowBinding
 import com.ahmed.photogallery.model.Adjustments
 import com.ahmed.photogallery.model.AspectRatio
 import com.ahmed.photogallery.model.CropConfig
+import com.ahmed.photogallery.model.FrameConfig
+import com.ahmed.photogallery.model.FrameType
 import com.ahmed.photogallery.model.Filters
+import com.ahmed.photogallery.model.OverlayConfig
+import com.ahmed.photogallery.model.OverlayType
 import com.ahmed.photogallery.ui.editor.EditorViewModel
 import com.ahmed.photogallery.utils.BitmapUtils
 import kotlinx.coroutines.Dispatchers
@@ -52,6 +56,8 @@ class EditorActivity : AppCompatActivity() {
         setupAdjustPanel()
         setupCropPanel()
         setupTransformPanel()
+        setupOverlayPanel()
+        setupFramePanel()
         setupTopBar()
         observeViewModel()
     }
@@ -106,6 +112,16 @@ class EditorActivity : AppCompatActivity() {
                 row.seek.progress = if (row.bipolar) 100 else 0
                 row.value.text = "0"
             }
+            overlayChips.forEachIndexed { i, chip ->
+                chip.background = getDrawable(if (i == 0) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+            }
+            b.seekOverlayIntensity.progress = 50
+            b.valOverlayIntensity.text = "50"
+            frameChips.forEachIndexed { i, chip ->
+                chip.background = getDrawable(if (i == 0) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+            }
+            b.seekFrameThickness.progress = 6
+            b.valFrameThickness.text = "6"
             b.tvHint.visibility = View.GONE
         }
 
@@ -269,6 +285,90 @@ class EditorActivity : AppCompatActivity() {
         }
     }
 
+    // ── Overlay panel ─────────────────────────────────────────────────────────
+
+    private val overlayChips = mutableListOf<TextView>()
+    private var overlayIntensityBeforeSlide = 0.5f
+
+    private fun setupOverlayPanel() {
+        OverlayType.values().forEachIndexed { i, type ->
+            val chip = makeChip(type.label, i == 0)
+            chip.setOnClickListener { selectOverlayType(type, i) }
+            overlayChips.add(chip)
+            b.overlayChipGroup.addView(chip)
+        }
+
+        b.seekOverlayIntensity.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(sb: SeekBar) {
+                overlayIntensityBeforeSlide = vm.editState.value?.overlayConfig?.intensity ?: 0.5f
+            }
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                b.valOverlayIntensity.text = p.toString()
+                vm.previewOverlayIntensity(p / 100f)
+            }
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                vm.commitOverlayIntensity(overlayIntensityBeforeSlide, sb.progress / 100f)
+            }
+        })
+    }
+
+    private fun selectOverlayType(type: OverlayType, index: Int) {
+        overlayChips.forEachIndexed { i, chip ->
+            chip.background = getDrawable(if (i == index) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+        }
+        val cur = vm.editState.value?.overlayConfig ?: OverlayConfig()
+        vm.setOverlay(cur.copy(type = type))
+    }
+
+    // ── Frame panel ───────────────────────────────────────────────────────────
+
+    private val frameChips = mutableListOf<TextView>()
+    private var frameThicknessBeforeSlide = 0.06f
+
+    private fun setupFramePanel() {
+        FrameType.values().forEachIndexed { i, type ->
+            val chip = makeChip(type.label, i == 0)
+            chip.setOnClickListener { selectFrameType(type, i) }
+            frameChips.add(chip)
+            b.frameChipGroup.addView(chip)
+        }
+
+        b.seekFrameThickness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(sb: SeekBar) {
+                frameThicknessBeforeSlide = vm.editState.value?.frameConfig?.thickness ?: 0.06f
+            }
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                b.valFrameThickness.text = p.toString()
+                vm.previewFrameThickness(p / 100f)
+            }
+            override fun onStopTrackingTouch(sb: SeekBar) {
+                vm.commitFrameThickness(frameThicknessBeforeSlide, sb.progress / 100f)
+            }
+        })
+    }
+
+    private fun selectFrameType(type: FrameType, index: Int) {
+        frameChips.forEachIndexed { i, chip ->
+            chip.background = getDrawable(if (i == index) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+        }
+        val cur = vm.editState.value?.frameConfig ?: FrameConfig()
+        vm.setFrame(cur.copy(type = type))
+    }
+
+    private fun makeChip(label: String, selected: Boolean): TextView = TextView(this).apply {
+        text = label
+        textSize = 12f
+        setPadding(28, 10, 28, 10)
+        setTextColor(getColor(R.color.white))
+        background = getDrawable(if (selected) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).also { it.marginEnd = 12 }
+    }
+
     // ── Transform panel ───────────────────────────────────────────────────────
 
     private fun setupTransformPanel() {
@@ -279,7 +379,7 @@ class EditorActivity : AppCompatActivity() {
 
     // ── Tabs ──────────────────────────────────────────────────────────────────
 
-    private enum class Tab { FILTER, ADJUST, CROP, TRANSFORM }
+    private enum class Tab { FILTER, ADJUST, CROP, TRANSFORM, OVERLAY, FRAME }
     private var currentTab = Tab.FILTER
 
     private fun setupTabs() {
@@ -287,12 +387,14 @@ class EditorActivity : AppCompatActivity() {
         b.btnAdjust.setOnClickListener    { selectTab(Tab.ADJUST) }
         b.btnCrop.setOnClickListener      { selectTab(Tab.CROP) }
         b.btnTransform.setOnClickListener { selectTab(Tab.TRANSFORM) }
+        b.btnOverlay.setOnClickListener   { selectTab(Tab.OVERLAY) }
+        b.btnFrame.setOnClickListener     { selectTab(Tab.FRAME) }
         selectTab(Tab.FILTER)
     }
 
     private fun selectTab(tab: Tab) {
         currentTab = tab
-        listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform)
+        listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform, b.btnOverlay, b.btnFrame)
             .forEachIndexed { i, tv ->
                 val active = tab.ordinal == i
                 tv.setBackgroundResource(
@@ -300,7 +402,7 @@ class EditorActivity : AppCompatActivity() {
                 )
                 tv.setTextColor(getColor(if (active) R.color.white else R.color.text_secondary))
             }
-        listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform)
+        listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform, b.panelOverlay, b.panelFrame)
             .forEachIndexed { i, pv -> pv.visibility = if (tab.ordinal == i) View.VISIBLE else View.GONE }
 
         val inCrop = tab == Tab.CROP

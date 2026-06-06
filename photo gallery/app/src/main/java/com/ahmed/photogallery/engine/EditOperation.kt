@@ -2,6 +2,8 @@ package com.ahmed.photogallery.engine
 
 import com.ahmed.photogallery.model.Adjustments
 import com.ahmed.photogallery.model.CropConfig
+import com.ahmed.photogallery.model.FrameConfig
+import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.PhotoFilter
 
 /** A reversible edit that can be pushed onto the undo stack. */
@@ -36,4 +38,14 @@ data class TransformOperation(
 ) : EditOperation {
     override fun apply(s: EditState) = s.copy(rotation = afterRot, flipHorizontal = afterFlipH, flipVertical = afterFlipV)
     override fun revert(s: EditState) = s.copy(rotation = beforeRot, flipHorizontal = beforeFlipH, flipVertical = beforeFlipV)
+}
+
+data class OverlayOperation(val before: OverlayConfig, val after: OverlayConfig) : EditOperation {
+    override fun apply(s: EditState) = s.copy(overlayConfig = after)
+    override fun revert(s: EditState) = s.copy(overlayConfig = before)
+}
+
+data class FrameOperation(val before: FrameConfig, val after: FrameConfig) : EditOperation {
+    override fun apply(s: EditState) = s.copy(frameConfig = after)
+    override fun revert(s: EditState) = s.copy(frameConfig = before)
 }

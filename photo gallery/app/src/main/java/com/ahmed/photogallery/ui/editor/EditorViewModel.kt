@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.ahmed.photogallery.engine.*
 import com.ahmed.photogallery.model.Adjustments
 import com.ahmed.photogallery.model.CropConfig
+import com.ahmed.photogallery.model.FrameConfig
+import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.PhotoFilter
 import com.ahmed.photogallery.utils.BitmapUtils
 import kotlinx.coroutines.Dispatchers
@@ -138,6 +140,52 @@ class EditorViewModel : ViewModel() {
         _editState.value = op.apply(cur)
         updateUndoRedo()
         scheduleRender()
+    }
+
+    // ── Overlay ───────────────────────────────────────────────────────────────
+
+    fun setOverlay(config: OverlayConfig) {
+        val cur = _editState.value ?: return
+        history.push(OverlayOperation(cur.overlayConfig, config))
+        _editState.value = cur.copy(overlayConfig = config)
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    fun previewOverlayIntensity(intensity: Float) {
+        val cur = _editState.value ?: return
+        _editState.value = cur.copy(overlayConfig = cur.overlayConfig.copy(intensity = intensity))
+        scheduleRender()
+    }
+
+    fun commitOverlayIntensity(before: Float, after: Float) {
+        if (before == after) return
+        val cur = _editState.value ?: return
+        history.push(OverlayOperation(cur.overlayConfig.copy(intensity = before), cur.overlayConfig))
+        updateUndoRedo()
+    }
+
+    // ── Frame ─────────────────────────────────────────────────────────────────
+
+    fun setFrame(config: FrameConfig) {
+        val cur = _editState.value ?: return
+        history.push(FrameOperation(cur.frameConfig, config))
+        _editState.value = cur.copy(frameConfig = config)
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    fun previewFrameThickness(thickness: Float) {
+        val cur = _editState.value ?: return
+        _editState.value = cur.copy(frameConfig = cur.frameConfig.copy(thickness = thickness))
+        scheduleRender()
+    }
+
+    fun commitFrameThickness(before: Float, after: Float) {
+        if (before == after) return
+        val cur = _editState.value ?: return
+        history.push(FrameOperation(cur.frameConfig.copy(thickness = before), cur.frameConfig))
+        updateUndoRedo()
     }
 
     // ── Undo / Redo ───────────────────────────────────────────────────────────

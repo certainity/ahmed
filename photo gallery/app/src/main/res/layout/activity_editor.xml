@@ -138,43 +138,64 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <!-- Tab strip: Filter | Adjust | Crop | Transform -->
-        <LinearLayout
+        <!-- Tab strip: Filter | Adjust | Crop | Transform | Overlay | Frame -->
+        <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="52dp"
-            android:orientation="horizontal"
-            android:paddingHorizontal="8dp"
-            android:paddingTop="8dp">
+            android:scrollbars="none"
+            android:fillViewport="false">
 
-            <TextView android:id="@+id/btnFilter"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_margin="4dp"
-                android:gravity="center" android:text="@string/tab_filter"
-                android:textAppearance="@style/TextAppearance.PG.TabActive"
-                android:background="@drawable/tab_pill_inactive" />
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:paddingHorizontal="8dp"
+                android:paddingTop="8dp">
 
-            <TextView android:id="@+id/btnAdjust"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_margin="4dp"
-                android:gravity="center" android:text="@string/tab_adjust"
-                android:textAppearance="@style/TextAppearance.PG.TabActive"
-                android:background="@drawable/tab_pill_inactive" />
+                <TextView android:id="@+id/btnFilter"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_filter"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
 
-            <TextView android:id="@+id/btnCrop"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_margin="4dp"
-                android:gravity="center" android:text="@string/tab_crop"
-                android:textAppearance="@style/TextAppearance.PG.TabActive"
-                android:background="@drawable/tab_pill_inactive" />
+                <TextView android:id="@+id/btnAdjust"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_adjust"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
 
-            <TextView android:id="@+id/btnTransform"
-                android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
-                android:layout_margin="4dp"
-                android:gravity="center" android:text="@string/tab_transform"
-                android:textAppearance="@style/TextAppearance.PG.TabActive"
-                android:background="@drawable/tab_pill_inactive" />
+                <TextView android:id="@+id/btnCrop"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_crop"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
 
-        </LinearLayout>
+                <TextView android:id="@+id/btnTransform"
+                    android:layout_width="80dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_transform"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
+
+                <TextView android:id="@+id/btnOverlay"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_overlay"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
+
+                <TextView android:id="@+id/btnFrame"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_frame"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
+
+            </LinearLayout>
+        </HorizontalScrollView>
 
         <!-- Content area: panels stacked, only one visible at a time -->
         <FrameLayout
@@ -353,6 +374,134 @@
                     android:text="@string/crop_apply"
                     android:minWidth="120dp" />
 
+            </LinearLayout>
+
+            <!-- OVERLAY PANEL -->
+            <LinearLayout
+                android:id="@+id/panelOverlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:scrollbars="none"
+                    android:paddingHorizontal="8dp">
+
+                    <LinearLayout
+                        android:id="@+id/overlayChipGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical" />
+                </HorizontalScrollView>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/intensity"
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginEnd="10dp" />
+
+                    <SeekBar
+                        android:id="@+id/seekOverlayIntensity"
+                        style="@style/Widget.PG.SeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:progress="50" />
+
+                    <TextView
+                        android:id="@+id/valOverlayIntensity"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="36dp"
+                        android:gravity="center"
+                        android:text="50"
+                        android:textAppearance="@style/TextAppearance.PG.Value"
+                        android:background="@drawable/bg_value_chip"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:layout_marginStart="10dp" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- FRAME PANEL -->
+            <LinearLayout
+                android:id="@+id/panelFrame"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:scrollbars="none"
+                    android:paddingHorizontal="8dp">
+
+                    <LinearLayout
+                        android:id="@+id/frameChipGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical" />
+                </HorizontalScrollView>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingBottom="6dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/frame_size"
+                        android:textAppearance="@style/TextAppearance.PG.Caption"
+                        android:layout_marginEnd="10dp" />
+
+                    <SeekBar
+                        android:id="@+id/seekFrameThickness"
+                        style="@style/Widget.PG.SeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="20"
+                        android:progress="6" />
+
+                    <TextView
+                        android:id="@+id/valFrameThickness"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="36dp"
+                        android:gravity="center"
+                        android:text="6"
+                        android:textAppearance="@style/TextAppearance.PG.Value"
+                        android:background="@drawable/bg_value_chip"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:layout_marginStart="10dp" />
+                </LinearLayout>
             </LinearLayout>
 
             <!-- TRANSFORM PANEL -->
