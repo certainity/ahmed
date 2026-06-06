@@ -45,21 +45,32 @@
             android:id="@+id/tvCounter"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp"
+            android:layout_marginEnd="4dp"
             android:textAppearance="@style/TextAppearance.PG.Body"
             android:textColor="@color/white"
             android:visibility="gone" />
 
         <ImageButton
+            android:id="@+id/btnFavorite"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="9dp"
+            android:src="@drawable/ic_star_outline"
+            android:scaleType="fitCenter"
+            android:background="@drawable/bg_floating_icon"
+            android:tint="@color/white"
+            android:layout_marginStart="4dp" />
+
+        <ImageButton
             android:id="@+id/btnInfo"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:padding="10dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:padding="9dp"
             android:src="@drawable/ic_info"
             android:scaleType="fitCenter"
             android:background="@drawable/bg_floating_icon"
             android:tint="@color/white"
-            android:layout_marginStart="6dp" />
+            android:layout_marginStart="4dp" />
 
     </LinearLayout>
 
@@ -94,6 +105,32 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="Share"
+                android:textAppearance="@style/TextAppearance.PG.Caption"
+                android:textColor="@color/white"
+                android:layout_marginTop="6dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:id="@+id/btnSlideshow">
+
+            <ImageView
+                android:layout_width="46dp"
+                android:layout_height="46dp"
+                android:padding="11dp"
+                android:id="@+id/ivSlideshowIcon"
+                android:src="@drawable/ic_play"
+                android:scaleType="fitCenter"
+                android:background="@drawable/bg_floating_icon"
+                android:tint="@color/white" />
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/slideshow"
                 android:textAppearance="@style/TextAppearance.PG.Caption"
                 android:textColor="@color/white"
                 android:layout_marginTop="6dp" />

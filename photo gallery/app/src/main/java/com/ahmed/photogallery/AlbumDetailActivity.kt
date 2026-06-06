@@ -13,6 +13,7 @@ import com.ahmed.photogallery.adapter.GalleryAdapter
 import com.ahmed.photogallery.databinding.ActivityAlbumDetailBinding
 import com.ahmed.photogallery.model.GalleryItem
 import com.ahmed.photogallery.model.Photo
+import com.ahmed.photogallery.utils.FavoritesStore
 import com.ahmed.photogallery.utils.MediaStoreUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -23,6 +24,7 @@ class AlbumDetailActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_BUCKET_ID = "bucket_id"
         const val EXTRA_ALBUM_NAME = "album_name"
+        const val FAVORITES_BUCKET_ID = -999L
     }
 
     private lateinit var b: ActivityAlbumDetailBinding
@@ -67,7 +69,12 @@ class AlbumDetailActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             b.progress.visibility = View.VISIBLE
-            photos = withContext(Dispatchers.IO) { loadAlbumPhotos(bucketId) }
+            photos = if (bucketId == FAVORITES_BUCKET_ID) {
+                val ids = FavoritesStore.getIds(this@AlbumDetailActivity)
+                MediaStoreUtils.getAllPhotos(this@AlbumDetailActivity).filter { it.id in ids }
+            } else {
+                withContext(Dispatchers.IO) { loadAlbumPhotos(bucketId) }
+            }
             adapter.submitList(photos.map { GalleryItem.PhotoItem(it) })
             b.tvPhotoCount.text = "${photos.size} photos"
             b.progress.visibility = View.GONE

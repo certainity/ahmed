@@ -1,7 +1,9 @@
 package com.ahmed.photogallery
 
+import android.content.ContentUris
 import android.content.Intent
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,6 +12,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.ahmed.photogallery.adapter.AlbumAdapter
 import com.ahmed.photogallery.databinding.FragmentAlbumsBinding
+import com.ahmed.photogallery.model.Album
+import com.ahmed.photogallery.utils.FavoritesStore
 import com.ahmed.photogallery.utils.MediaStoreUtils
 import kotlinx.coroutines.launch
 
@@ -50,11 +54,29 @@ class AlbumsFragment : Fragment() {
             b.layoutAlbumsEmpty.visibility = View.GONE
 
             val albums = MediaStoreUtils.getAlbums(requireContext())
-            b.tvAlbumCount.text = "${albums.size} albums"
-            adapter.submitList(albums)
+
+            // Prepend virtual Favorites album if any photos are starred
+            val favIds = FavoritesStore.getIds(requireContext())
+            val allAlbums = if (favIds.isNotEmpty()) {
+                val coverId = favIds.first()
+                val coverUri = ContentUris.withAppendedId(
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI, coverId
+                )
+                listOf(Album(
+                    name = getString(R.string.favorites),
+                    coverUri = coverUri,
+                    count = favIds.size,
+                    bucketId = AlbumDetailActivity.FAVORITES_BUCKET_ID
+                )) + albums
+            } else {
+                albums
+            }
+
+            b.tvAlbumCount.text = "${allAlbums.size} albums"
+            adapter.submitList(allAlbums)
 
             b.progressAlbums.visibility = View.GONE
-            if (albums.isEmpty()) {
+            if (allAlbums.isEmpty()) {
                 b.layoutAlbumsEmpty.visibility = View.VISIBLE
             } else {
                 b.recyclerAlbums.visibility = View.VISIBLE

@@ -4,6 +4,7 @@ import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
 import android.content.ContentUris
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +26,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
 import com.ahmed.photogallery.databinding.ActivityPhotoViewerBinding
 import com.ahmed.photogallery.model.Photo
+import com.ahmed.photogallery.utils.FavoritesStore
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.GlideException
@@ -53,7 +55,6 @@ class PhotoViewerActivity : AppCompatActivity() {
 
     // ── Swipe-down dismiss ────────────────────────────────────────────────────
 
-    private var swipeStartY = 0f
     private var isDismissing = false
 
     private val gestureDetector by lazy {
@@ -96,6 +97,62 @@ class PhotoViewerActivity : AppCompatActivity() {
         }
     }
 
+    // ── Slideshow ─────────────────────────────────────────────────────────────
+
+    private val slideshowHandler = Handler(Looper.getMainLooper())
+    private var slideshowRunning = false
+
+    private fun toggleSlideshow() {
+        if (slideshowRunning) stopSlideshow() else startSlideshow()
+    }
+
+    private fun startSlideshow() {
+        if (photos.size < 2) return
+        slideshowRunning = true
+        b.ivSlideshowIcon.setImageResource(R.drawable.ic_pause)
+        toggleUi(false)
+        scheduleNextSlide()
+    }
+
+    private fun scheduleNextSlide() {
+        slideshowHandler.postDelayed({
+            if (!slideshowRunning) return@postDelayed
+            val next = currentPos + 1
+            if (next >= photos.size) { stopSlideshow(); return@postDelayed }
+            b.viewPager.setCurrentItem(next, true)
+            scheduleNextSlide()
+        }, 3000L)
+    }
+
+    private fun stopSlideshow() {
+        slideshowRunning = false
+        slideshowHandler.removeCallbacksAndMessages(null)
+        b.ivSlideshowIcon.setImageResource(R.drawable.ic_play)
+        toggleUi(true)
+    }
+
+    // ── Favorites ─────────────────────────────────────────────────────────────
+
+    private fun toggleFavorite() {
+        val photo = photos.getOrNull(currentPos) ?: return
+        val nowFav = FavoritesStore.toggle(this, photo.id)
+        applyStarIcon(nowFav)
+        Toast.makeText(
+            this,
+            getString(if (nowFav) R.string.added_to_favorites else R.string.removed_from_favorites),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    private fun applyStarIcon(isFav: Boolean) {
+        b.btnFavorite.setImageResource(
+            if (isFav) R.drawable.ic_star_filled else R.drawable.ic_star_outline
+        )
+        b.btnFavorite.imageTintList = ColorStateList.valueOf(
+            if (isFav) getColor(R.color.accent) else getColor(android.R.color.white)
+        )
+    }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,7 +168,6 @@ class PhotoViewerActivity : AppCompatActivity() {
             duration = 280L
             interpolator = DecelerateInterpolator()
         }
-        // Fallback: start transition even if Glide is slow
         Handler(Looper.getMainLooper()).postDelayed({ startPostponedEnterTransition() }, 500L)
 
         photos = photosCache
@@ -121,7 +177,9 @@ class PhotoViewerActivity : AppCompatActivity() {
         setupPager()
 
         b.btnBack.setOnClickListener { finish() }
+        b.btnFavorite.setOnClickListener { toggleFavorite() }
         b.btnInfo.setOnClickListener { showInfoSheet() }
+        b.btnSlideshow.setOnClickListener { toggleSlideshow() }
         b.btnEdit.setOnClickListener {
             photos.getOrNull(currentPos)?.let { photo ->
                 startActivity(Intent(this, EditorActivity::class.java).apply {
@@ -141,7 +199,14 @@ class PhotoViewerActivity : AppCompatActivity() {
             }
         }
         b.btnDelete.setOnClickListener { deleteCurrentPhoto() }
+
+        applyStarIcon(FavoritesStore.isFavorite(this, photos.getOrNull(currentPos)?.id ?: -1L))
         toggleUi(true)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (slideshowRunning) stopSlideshow()
     }
 
     // ── Pager ─────────────────────────────────────────────────────────────────
@@ -160,7 +225,8 @@ class PhotoViewerActivity : AppCompatActivity() {
                         b.viewPager.isUserInputEnabled = scale <= 1.05f
                     }
                     setOnPhotoTapListener { _, _, _ ->
-                        toggleUi(b.topBar.visibility == View.GONE)
+                        if (slideshowRunning) stopSlideshow()
+                        else toggleUi(b.topBar.visibility == View.GONE)
                     }
                 }
                 return PhotoPageVH(pv)
@@ -198,6 +264,8 @@ class PhotoViewerActivity : AppCompatActivity() {
             override fun onPageSelected(position: Int) {
                 currentPos = position
                 updateCounter(position)
+                applyStarIcon(FavoritesStore.isFavorite(
+                    this@PhotoViewerActivity, photos[position].id))
             }
         })
     }
