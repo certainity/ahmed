@@ -13,8 +13,8 @@ android {
         applicationId "com.ahmed.photogallery"
         minSdk 24
         targetSdk 34
-        versionCode 5
-        versionName "3.0"
+        versionCode 6
+        versionName "4.0"
         resConfigs "en"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,6 +68,7 @@ dependencies {
     implementation 'androidx.fragment:fragment-ktx:1.6.2'
     implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.7.0'
     implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
 
     // Image loading
     implementation 'com.github.bumptech.glide:glide:4.16.0'

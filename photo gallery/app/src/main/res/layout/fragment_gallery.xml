@@ -146,14 +146,22 @@
         android:layout_height="0dp"
         android:layout_weight="1">
 
-        <!-- Photo grid -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recycler"
+        <!-- Photo grid (wrapped in SwipeRefreshLayout for pull-to-refresh) -->
+        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+            android:id="@+id/swipeRefresh"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:padding="3dp"
-            android:visibility="gone" />
+            android:visibility="gone">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/recycler"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:padding="3dp"
+                android:visibility="visible" />
+
+        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <!-- Loading -->
         <ProgressBar

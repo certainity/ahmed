@@ -6,7 +6,9 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.ahmed.photogallery.databinding.ItemDateHeaderBinding
 import com.ahmed.photogallery.databinding.ItemPhotoBinding
+import com.ahmed.photogallery.model.GalleryItem
 import com.ahmed.photogallery.model.Photo
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
@@ -16,21 +18,41 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 class GalleryAdapter(
     private val onPhotoClick: (Photo, Int) -> Unit,
     private val onSelectionChanged: (Int) -> Unit
-) : ListAdapter<Photo, GalleryAdapter.PhotoVH>(Diff()) {
+) : ListAdapter<GalleryItem, RecyclerView.ViewHolder>(Diff()) {
+
+    companion object {
+        const val TYPE_HEADER = 0
+        const val TYPE_PHOTO  = 1
+    }
 
     private val selected = mutableSetOf<Long>()
     var selectionMode = false
         private set
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoVH {
-        val binding = ItemPhotoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
-        val screenW = parent.context.resources.displayMetrics.widthPixels
-        val size = if (parent.width > 0) parent.width / 3 else screenW / 3
-        binding.root.layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, size)
-        return PhotoVH(binding)
+    override fun getItemViewType(position: Int) = when (getItem(position)) {
+        is GalleryItem.DateHeader -> TYPE_HEADER
+        is GalleryItem.PhotoItem  -> TYPE_PHOTO
     }
 
-    override fun onBindViewHolder(holder: PhotoVH, position: Int) = holder.bind(getItem(position))
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
+        return if (viewType == TYPE_HEADER) {
+            val b = ItemDateHeaderBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            HeaderVH(b)
+        } else {
+            val b = ItemPhotoBinding.inflate(LayoutInflater.from(parent.context), parent, false)
+            val screenW = parent.context.resources.displayMetrics.widthPixels
+            val size = if (parent.width > 0) parent.width / 3 else screenW / 3
+            b.root.layoutParams = RecyclerView.LayoutParams(RecyclerView.LayoutParams.MATCH_PARENT, size)
+            PhotoVH(b)
+        }
+    }
+
+    override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        when (val item = getItem(position)) {
+            is GalleryItem.DateHeader -> (holder as HeaderVH).bind(item.label)
+            is GalleryItem.PhotoItem  -> (holder as PhotoVH).bind(item.photo)
+        }
+    }
 
     fun clearSelection() {
         selected.clear()
@@ -40,8 +62,18 @@ class GalleryAdapter(
 
     fun getSelectedCount() = selected.size
 
-    fun getSelectedPhotos(photos: List<Photo>): List<Photo> =
-        photos.filter { selected.contains(it.id) }
+    fun getSelectedPhotos(): List<Photo> =
+        currentList.filterIsInstance<GalleryItem.PhotoItem>()
+            .map { it.photo }
+            .filter { selected.contains(it.id) }
+
+    // ── Date Header VH ────────────────────────────────────────────────────────
+
+    class HeaderVH(private val b: ItemDateHeaderBinding) : RecyclerView.ViewHolder(b.root) {
+        fun bind(label: String) { b.tvDate.text = label }
+    }
+
+    // ── Photo VH ──────────────────────────────────────────────────────────────
 
     inner class PhotoVH(private val b: ItemPhotoBinding) : RecyclerView.ViewHolder(b.root) {
         fun bind(photo: Photo) {
@@ -57,10 +89,11 @@ class GalleryAdapter(
             b.ivCheck.visibility = if (isSel) View.VISIBLE else View.GONE
 
             b.root.setOnClickListener {
-                if (selectionMode) {
-                    toggle(photo)
-                } else {
-                    onPhotoClick(photo, bindingAdapterPosition)
+                if (selectionMode) toggle(photo)
+                else {
+                    val photoIndex = currentList.filterIsInstance<GalleryItem.PhotoItem>()
+                        .indexOfFirst { it.photo.id == photo.id }
+                    onPhotoClick(photo, photoIndex)
                 }
             }
 
@@ -79,8 +112,14 @@ class GalleryAdapter(
         }
     }
 
-    private class Diff : DiffUtil.ItemCallback<Photo>() {
-        override fun areItemsTheSame(a: Photo, b: Photo) = a.id == b.id
-        override fun areContentsTheSame(a: Photo, b: Photo) = a == b
+    // ── Diff ──────────────────────────────────────────────────────────────────
+
+    private class Diff : DiffUtil.ItemCallback<GalleryItem>() {
+        override fun areItemsTheSame(a: GalleryItem, b: GalleryItem): Boolean = when {
+            a is GalleryItem.DateHeader && b is GalleryItem.DateHeader -> a.label == b.label
+            a is GalleryItem.PhotoItem  && b is GalleryItem.PhotoItem  -> a.photo.id == b.photo.id
+            else -> false
+        }
+        override fun areContentsTheSame(a: GalleryItem, b: GalleryItem) = a == b
     }
 }

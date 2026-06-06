@@ -21,6 +21,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.ahmed.photogallery.adapter.GalleryAdapter
 import com.ahmed.photogallery.databinding.FragmentGalleryBinding
+import com.ahmed.photogallery.model.GalleryItem
 import com.ahmed.photogallery.model.Photo
 import com.ahmed.photogallery.utils.MediaStoreUtils
 import com.bumptech.glide.Glide
@@ -30,6 +31,8 @@ import com.bumptech.glide.load.resource.bitmap.RoundedCorners
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
+import java.util.Locale
 
 class GalleryFragment : Fragment() {
 
@@ -40,7 +43,7 @@ class GalleryFragment : Fragment() {
     private var photos = listOf<Photo>()
 
     companion object {
-        private const val PERM_REQUEST = 100
+        private const val PERM_REQUEST  = 100
         private const val RECENTS_COUNT = 15
     }
 
@@ -58,6 +61,10 @@ class GalleryFragment : Fragment() {
         b.btnCamera.setOnClickListener { launchCamera() }
         b.btnSearch.setOnClickListener { /* search: future feature */ }
         b.btnSeeAll.setOnClickListener { b.recycler.smoothScrollToPosition(0) }
+        b.swipeRefresh.setOnRefreshListener { loadPhotos() }
+        b.swipeRefresh.setColorSchemeColors(
+            requireContext().getColor(R.color.accent)
+        )
         checkPermissionsAndLoad()
     }
 
@@ -108,11 +115,16 @@ class GalleryFragment : Fragment() {
 
     fun loadPhotos() {
         viewLifecycleOwner.lifecycleScope.launch {
-            showState(State.LOADING)
+            if (!b.swipeRefresh.isRefreshing) showState(State.LOADING)
             photos = MediaStoreUtils.getAllPhotos(requireContext())
-            adapter.submitList(photos)
+
+            val items = buildGalleryItems(photos)
+            adapter.submitList(items)
+
             b.tvPhotoCount.text = "${photos.size}"
             b.tvSectionTitle.text = "All Photos"
+            b.swipeRefresh.isRefreshing = false
+
             if (photos.isEmpty()) {
                 showState(State.EMPTY)
             } else {
@@ -122,13 +134,56 @@ class GalleryFragment : Fragment() {
         }
     }
 
+    // ── Date grouping ─────────────────────────────────────────────────────────
+
+    private fun buildGalleryItems(photos: List<Photo>): List<GalleryItem> {
+        val now = System.currentTimeMillis()
+        val todayStart    = startOfDay(now)
+        val yesterdayStart = todayStart - 86_400_000L
+        val weekStart      = todayStart - 7 * 86_400_000L
+        val thisYear       = Calendar.getInstance().get(Calendar.YEAR)
+
+        val items = mutableListOf<GalleryItem>()
+        var lastLabel = ""
+
+        photos.forEach { photo ->
+            val ms = photo.dateAdded * 1000L
+            val label = when {
+                ms >= todayStart     -> "Today"
+                ms >= yesterdayStart -> "Yesterday"
+                ms >= weekStart      -> "This Week"
+                else -> {
+                    val cal = Calendar.getInstance().apply { timeInMillis = ms }
+                    val month = cal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault()) ?: ""
+                    val year  = cal.get(Calendar.YEAR)
+                    if (year == thisYear) month else "$month $year"
+                }
+            }
+            if (label != lastLabel) {
+                items.add(GalleryItem.DateHeader(label))
+                lastLabel = label
+            }
+            items.add(GalleryItem.PhotoItem(photo))
+        }
+        return items
+    }
+
+    private fun startOfDay(ms: Long): Long = Calendar.getInstance().run {
+        timeInMillis = ms
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0);      set(Calendar.MILLISECOND, 0)
+        timeInMillis
+    }
+
+    // ── Recents strip ─────────────────────────────────────────────────────────
+
     private fun buildRecentsStrip(recents: List<Photo>) {
         b.layoutRecents.visibility = View.VISIBLE
         b.layoutSectionHeader.visibility = View.VISIBLE
         b.recentsContainer.removeAllViews()
 
-        val dp = resources.displayMetrics.density
-        val size = (80 * dp).toInt()
+        val dp     = resources.displayMetrics.density
+        val size   = (80 * dp).toInt()
         val margin = (4 * dp).toInt()
         val radius = (12 * dp).toInt()
 
@@ -178,21 +233,27 @@ class GalleryFragment : Fragment() {
                 }
             }
         )
-        b.recycler.layoutManager = GridLayoutManager(requireContext(), 3)
+
+        val layoutManager = GridLayoutManager(requireContext(), 3)
+        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int) =
+                if (adapter.getItemViewType(position) == GalleryAdapter.TYPE_HEADER) 3 else 1
+        }
+
+        b.recycler.layoutManager = layoutManager
         b.recycler.adapter = adapter
-        b.recycler.setHasFixedSize(true)
+        b.recycler.setHasFixedSize(false)
 
         b.btnSelShare.setOnClickListener { shareSelected() }
         b.btnSelDelete.setOnClickListener { confirmDeleteSelected() }
     }
 
     private fun shareSelected() {
-        val selected = adapter.getSelectedPhotos(photos)
-        if (selected.isEmpty()) return
-        val uris = ArrayList(selected.map { it.uri })
+        val sel = adapter.getSelectedPhotos()
+        if (sel.isEmpty()) return
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = "image/*"
-            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris)
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(sel.map { it.uri }))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }, "Share"))
     }
@@ -208,7 +269,7 @@ class GalleryFragment : Fragment() {
     }
 
     private fun deleteSelected() {
-        val toDelete = adapter.getSelectedPhotos(photos)
+        val toDelete = adapter.getSelectedPhotos()
         if (toDelete.isEmpty()) return
         viewLifecycleOwner.lifecycleScope.launch {
             withContext(Dispatchers.IO) {
@@ -232,9 +293,9 @@ class GalleryFragment : Fragment() {
     private enum class State { LOADING, CONTENT, EMPTY, NO_PERMISSION }
 
     private fun showState(state: State) {
-        b.progress.visibility     = if (state == State.LOADING) View.VISIBLE else View.GONE
-        b.recycler.visibility     = if (state == State.CONTENT) View.VISIBLE else View.GONE
-        b.layoutEmpty.visibility  = if (state == State.EMPTY) View.VISIBLE else View.GONE
+        b.progress.visibility      = if (state == State.LOADING) View.VISIBLE else View.GONE
+        b.swipeRefresh.visibility  = if (state == State.CONTENT) View.VISIBLE else View.GONE
+        b.layoutEmpty.visibility   = if (state == State.EMPTY)   View.VISIBLE else View.GONE
         b.layoutNoPerm.visibility = if (state == State.NO_PERMISSION) View.VISIBLE else View.GONE
         b.selectionBar.visibility = View.GONE
         if (state != State.CONTENT) {

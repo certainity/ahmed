@@ -10,6 +10,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.ahmed.photogallery.adapter.GalleryAdapter
 import com.ahmed.photogallery.databinding.ActivityAlbumDetailBinding
+import com.ahmed.photogallery.model.GalleryItem
 import com.ahmed.photogallery.model.Photo
 import com.ahmed.photogallery.utils.MediaStoreUtils
 import kotlinx.coroutines.Dispatchers
@@ -52,14 +53,19 @@ class AlbumDetailActivity : AppCompatActivity() {
             }
         )
 
-        b.recycler.layoutManager = GridLayoutManager(this, 3)
+        val layoutManager = GridLayoutManager(this, 3)
+        layoutManager.spanSizeLookup = object : GridLayoutManager.SpanSizeLookup() {
+            override fun getSpanSize(position: Int) =
+                if (adapter.getItemViewType(position) == GalleryAdapter.TYPE_HEADER) 3 else 1
+        }
+        b.recycler.layoutManager = layoutManager
         b.recycler.adapter = adapter
-        b.recycler.setHasFixedSize(true)
+        b.recycler.setHasFixedSize(false)
 
         lifecycleScope.launch {
             b.progress.visibility = View.VISIBLE
             photos = withContext(Dispatchers.IO) { loadAlbumPhotos(bucketId) }
-            adapter.submitList(photos)
+            adapter.submitList(photos.map { GalleryItem.PhotoItem(it) })
             b.tvPhotoCount.text = "${photos.size} photos"
             b.progress.visibility = View.GONE
             b.recycler.visibility = View.VISIBLE
