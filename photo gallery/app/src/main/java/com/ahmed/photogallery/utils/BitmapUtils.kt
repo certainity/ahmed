@@ -14,9 +14,11 @@ import com.ahmed.photogallery.model.FrameConfig
 import com.ahmed.photogallery.model.FrameType
 import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.OverlayType
+import com.ahmed.photogallery.model.TextLayer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.absoluteValue
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 object BitmapUtils {
@@ -307,6 +309,71 @@ object BitmapUtils {
         Canvas(dst).drawBitmap(overlay, 0f, 0f, Paint().apply {
             this.alpha = (alpha * 255).toInt().coerceIn(0, 255)
         })
+        return dst
+    }
+
+    // ── Auto-enhance ──────────────────────────────────────────────────────────
+
+    fun analyzeAndEnhance(src: Bitmap): Adjustments {
+        val w = src.width; val h = src.height
+        val pixels = IntArray(w * h)
+        src.getPixels(pixels, 0, w, 0, 0, w, h)
+
+        var sumLum = 0.0; var sumSat = 0.0
+        val lums = DoubleArray(pixels.size)
+
+        pixels.forEachIndexed { i, p ->
+            val r = Color.red(p) / 255.0
+            val g = Color.green(p) / 255.0
+            val b = Color.blue(p) / 255.0
+            val lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            lums[i] = lum
+            sumLum += lum
+            val mx = maxOf(r, g, b); val mn = minOf(r, g, b)
+            if (mx > 0.0) sumSat += (mx - mn) / mx
+        }
+
+        val n = pixels.size.toDouble()
+        val avgLum = sumLum / n
+        val avgSat = sumSat / n
+        val variance = lums.fold(0.0) { acc, l -> acc + (l - avgLum) * (l - avgLum) } / n
+        val stdDev   = sqrt(variance)
+
+        return Adjustments(
+            exposure    = ((0.48 - avgLum) * 80.0).coerceIn(-60.0, 60.0).toFloat(),
+            contrast    = ((0.25 - stdDev) * 90.0).coerceIn(-35.0, 50.0).toFloat(),
+            saturation  = ((0.32 - avgSat) * 80.0).coerceIn(-30.0, 40.0).toFloat()
+        )
+    }
+
+    // ── Text layers ───────────────────────────────────────────────────────────
+
+    fun renderTextLayers(src: Bitmap, layers: List<TextLayer>): Bitmap {
+        if (layers.isEmpty()) return src
+        val dst = src.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(dst)
+        val bounds = android.graphics.Rect()
+        layers.forEach { layer ->
+            val textPx = layer.sizeFraction * src.width
+            val sx = layer.x * src.width
+            val sy = layer.y * src.height
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = layer.color
+                textSize = textPx
+                typeface = if (layer.bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            }
+
+            if (layer.hasBackground) {
+                paint.getTextBounds(layer.text, 0, layer.text.length, bounds)
+                canvas.drawRoundRect(
+                    sx + bounds.left - 12f, sy + bounds.top - 8f,
+                    sx + bounds.right + 12f, sy + bounds.bottom + 8f,
+                    10f, 10f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = layer.bgColor }
+                )
+            }
+            canvas.drawText(layer.text, sx, sy, paint)
+        }
         return dst
     }
 

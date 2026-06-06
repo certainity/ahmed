@@ -13,8 +13,8 @@ android {
         applicationId "com.ahmed.photogallery"
         minSdk 24
         targetSdk 34
-        versionCode 7
-        versionName "5.0"
+        versionCode 8
+        versionName "6.0"
         resConfigs "en"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

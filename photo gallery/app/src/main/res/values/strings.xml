@@ -51,6 +51,13 @@
     <string name="tab_frame">Frame</string>
     <string name="frame_size">Size</string>
 
+    <!-- Text tab -->
+    <string name="tab_text">Text</string>
+    <string name="text_add">+ Add Text</string>
+    <string name="text_size">Size</string>
+    <string name="text_hint">Enter text…</string>
+    <string name="auto_enhance">✨ Auto</string>
+
     <!-- Gallery -->
     <string name="photos">photos</string>
     <string name="selected">selected</string>

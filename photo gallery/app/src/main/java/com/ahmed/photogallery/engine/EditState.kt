@@ -5,6 +5,7 @@ import com.ahmed.photogallery.model.CropConfig
 import com.ahmed.photogallery.model.FrameConfig
 import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.PhotoFilter
+import com.ahmed.photogallery.model.TextLayer
 
 /** Immutable snapshot of all non-destructive edit parameters. */
 data class EditState(
@@ -16,5 +17,6 @@ data class EditState(
     val flipHorizontal: Boolean = false,
     val flipVertical: Boolean = false,
     val overlayConfig: OverlayConfig = OverlayConfig(),
-    val frameConfig: FrameConfig = FrameConfig()
+    val frameConfig: FrameConfig = FrameConfig(),
+    val textLayers: List<TextLayer> = emptyList()
 )

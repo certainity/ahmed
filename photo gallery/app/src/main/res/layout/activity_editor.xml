@@ -96,6 +96,13 @@
             android:layout_height="match_parent"
             android:visibility="gone" />
 
+        <!-- TextOverlayView — shown only in Text mode -->
+        <com.ahmed.photogallery.ui.editor.widget.TextOverlayView
+            android:id="@+id/textOverlay"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone" />
+
         <!-- Hold-to-compare hint -->
         <TextView
             android:id="@+id/tvHint"
@@ -191,6 +198,13 @@
                     android:layout_width="72dp" android:layout_height="match_parent"
                     android:layout_margin="4dp"
                     android:gravity="center" android:text="@string/tab_frame"
+                    android:textAppearance="@style/TextAppearance.PG.TabActive"
+                    android:background="@drawable/tab_pill_inactive" />
+
+                <TextView android:id="@+id/btnText"
+                    android:layout_width="72dp" android:layout_height="match_parent"
+                    android:layout_margin="4dp"
+                    android:gravity="center" android:text="@string/tab_text"
                     android:textAppearance="@style/TextAppearance.PG.TabActive"
                     android:background="@drawable/tab_pill_inactive" />
 
@@ -502,6 +516,141 @@
                         android:paddingVertical="3dp"
                         android:layout_marginStart="10dp" />
                 </LinearLayout>
+            </LinearLayout>
+
+            <!-- TEXT PANEL -->
+            <LinearLayout
+                android:id="@+id/panelText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- Add / Delete row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="52dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp">
+
+                    <Button
+                        android:id="@+id/btnAddText"
+                        style="@style/Widget.PG.Button.Pill"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="@string/text_add"
+                        android:paddingHorizontal="18dp"
+                        android:backgroundTint="@null" />
+
+                    <View android:layout_width="0dp" android:layout_height="0dp" android:layout_weight="1" />
+
+                    <Button
+                        android:id="@+id/btnDeleteText"
+                        style="@style/Widget.PG.Button.Pill"
+                        android:layout_width="wrap_content"
+                        android:layout_height="36dp"
+                        android:text="@string/delete"
+                        android:paddingHorizontal="18dp"
+                        android:backgroundTint="@null"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <!-- Size slider -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp">
+
+                    <TextView
+                        android:layout_width="50dp"
+                        android:layout_height="wrap_content"
+                        android:text="@string/text_size"
+                        android:textAppearance="@style/TextAppearance.PG.Caption" />
+
+                    <SeekBar
+                        android:id="@+id/seekTextSize"
+                        style="@style/Widget.PG.SeekBar"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:progress="30" />
+
+                    <TextView
+                        android:id="@+id/valTextSize"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:minWidth="36dp"
+                        android:gravity="center"
+                        android:text="30"
+                        android:textAppearance="@style/TextAppearance.PG.Value"
+                        android:background="@drawable/bg_value_chip"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="3dp"
+                        android:layout_marginStart="10dp" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <!-- Style chips -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="44dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="16dp">
+
+                    <TextView
+                        android:id="@+id/chipTextBold"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bold"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"
+                        android:textColor="@color/white"
+                        android:background="@drawable/chip_default_bg"
+                        android:layout_marginEnd="12dp" />
+
+                    <TextView
+                        android:id="@+id/chipTextBg"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Background"
+                        android:textSize="12sp"
+                        android:paddingHorizontal="20dp"
+                        android:paddingVertical="8dp"
+                        android:textColor="@color/white"
+                        android:background="@drawable/chip_default_bg" />
+                </LinearLayout>
+
+                <View android:layout_width="match_parent" android:layout_height="1dp"
+                    android:background="@color/divider" />
+
+                <!-- Color swatches -->
+                <HorizontalScrollView
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
+                    android:scrollbars="none"
+                    android:paddingHorizontal="16dp"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:id="@+id/textColorGroup"
+                        android:layout_width="wrap_content"
+                        android:layout_height="match_parent"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical" />
+                </HorizontalScrollView>
+
             </LinearLayout>
 
             <!-- TRANSFORM PANEL -->

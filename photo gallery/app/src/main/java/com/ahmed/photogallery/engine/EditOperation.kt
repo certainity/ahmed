@@ -5,6 +5,7 @@ import com.ahmed.photogallery.model.CropConfig
 import com.ahmed.photogallery.model.FrameConfig
 import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.PhotoFilter
+import com.ahmed.photogallery.model.TextLayer
 
 /** A reversible edit that can be pushed onto the undo stack. */
 interface EditOperation {
@@ -48,4 +49,9 @@ data class OverlayOperation(val before: OverlayConfig, val after: OverlayConfig)
 data class FrameOperation(val before: FrameConfig, val after: FrameConfig) : EditOperation {
     override fun apply(s: EditState) = s.copy(frameConfig = after)
     override fun revert(s: EditState) = s.copy(frameConfig = before)
+}
+
+data class TextOperation(val before: List<TextLayer>, val after: List<TextLayer>) : EditOperation {
+    override fun apply(s: EditState) = s.copy(textLayers = after)
+    override fun revert(s: EditState) = s.copy(textLayers = before)
 }

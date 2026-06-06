@@ -11,6 +11,7 @@ import com.ahmed.photogallery.model.CropConfig
 import com.ahmed.photogallery.model.FrameConfig
 import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.PhotoFilter
+import com.ahmed.photogallery.model.TextLayer
 import com.ahmed.photogallery.utils.BitmapUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -188,6 +189,65 @@ class EditorViewModel : ViewModel() {
         updateUndoRedo()
     }
 
+    // ── Text layers ───────────────────────────────────────────────────────────
+
+    fun addTextLayer(layer: TextLayer) {
+        val cur = _editState.value ?: return
+        val after = cur.textLayers + layer
+        history.push(TextOperation(cur.textLayers, after))
+        _editState.value = cur.copy(textLayers = after)
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    fun previewTextMove(id: Long, nx: Float, ny: Float) {
+        val cur = _editState.value ?: return
+        _editState.value = cur.copy(
+            textLayers = cur.textLayers.map { if (it.id == id) it.copy(x = nx, y = ny) else it }
+        )
+    }
+
+    fun commitTextMove(id: Long, beforeX: Float, beforeY: Float) {
+        val cur = _editState.value ?: return
+        val before = cur.textLayers.map { if (it.id == id) it.copy(x = beforeX, y = beforeY) else it }
+        if (before == cur.textLayers) return
+        history.push(TextOperation(before, cur.textLayers))
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    fun updateTextLayer(id: Long, updater: (TextLayer) -> TextLayer) {
+        val cur = _editState.value ?: return
+        val after = cur.textLayers.map { if (it.id == id) updater(it) else it }
+        if (after == cur.textLayers) return
+        history.push(TextOperation(cur.textLayers, after))
+        _editState.value = cur.copy(textLayers = after)
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    fun deleteTextLayer(id: Long) {
+        val cur = _editState.value ?: return
+        val after = cur.textLayers.filter { it.id != id }
+        history.push(TextOperation(cur.textLayers, after))
+        _editState.value = cur.copy(textLayers = after)
+        updateUndoRedo()
+        scheduleRender()
+    }
+
+    // ── Auto-enhance ──────────────────────────────────────────────────────────
+
+    suspend fun autoEnhance(): Adjustments? {
+        val proxy = proxyBitmap ?: return null
+        val cur   = _editState.value ?: return null
+        val newAdj = withContext(Dispatchers.Default) { BitmapUtils.analyzeAndEnhance(proxy) }
+        history.push(AdjustOperation(cur.adjustments, newAdj))
+        _editState.value = cur.copy(adjustments = newAdj)
+        updateUndoRedo()
+        scheduleRender()
+        return newAdj
+    }
+
     // ── Undo / Redo ───────────────────────────────────────────────────────────
 
     fun undo() {
@@ -233,11 +293,14 @@ class EditorViewModel : ViewModel() {
         }
     }
 
-    /** Full-resolution render for saving. Call from a coroutine. */
+    /** Full-resolution render for saving — includes text layers baked on top. */
     suspend fun renderForExport(): Bitmap? {
         val src   = sourceBitmap ?: return null
         val state = _editState.value ?: return null
-        return withContext(Dispatchers.Default) { BitmapUtils.renderPipeline(src, state) }
+        return withContext(Dispatchers.Default) {
+            val base = BitmapUtils.renderPipeline(src, state)
+            BitmapUtils.renderTextLayers(base, state.textLayers)
+        }
     }
 
     override fun onCleared() {

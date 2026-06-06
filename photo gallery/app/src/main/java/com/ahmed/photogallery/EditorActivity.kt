@@ -2,17 +2,23 @@ package com.ahmed.photogallery
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.text.InputType
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -27,6 +33,7 @@ import com.ahmed.photogallery.model.FrameType
 import com.ahmed.photogallery.model.Filters
 import com.ahmed.photogallery.model.OverlayConfig
 import com.ahmed.photogallery.model.OverlayType
+import com.ahmed.photogallery.model.TextLayer
 import com.ahmed.photogallery.ui.editor.EditorViewModel
 import com.ahmed.photogallery.utils.BitmapUtils
 import kotlinx.coroutines.Dispatchers
@@ -58,6 +65,7 @@ class EditorActivity : AppCompatActivity() {
         setupTransformPanel()
         setupOverlayPanel()
         setupFramePanel()
+        setupTextPanel()
         setupTopBar()
         observeViewModel()
     }
@@ -89,10 +97,15 @@ class EditorActivity : AppCompatActivity() {
             bmp ?: return@observe
             b.ivPhoto.setImageBitmap(bmp)
             b.loading.visibility = View.GONE
-            if (currentTab != Tab.CROP) b.tvHint.visibility = View.VISIBLE
+            if (currentTab != Tab.CROP && currentTab != Tab.TEXT) b.tvHint.visibility = View.VISIBLE
         }
         vm.canUndo.observe(this) { can -> b.btnUndo.alpha = if (can) 1f else 0.35f }
         vm.canRedo.observe(this) { can -> b.btnRedo.alpha = if (can) 1f else 0.35f }
+        vm.editState.observe(this) { state ->
+            if (currentTab == Tab.TEXT) {
+                b.textOverlay.layers = state.textLayers
+            }
+        }
     }
 
     // ── Top bar ───────────────────────────────────────────────────────────────
@@ -195,8 +208,25 @@ class EditorActivity : AppCompatActivity() {
         )
 
         val container = b.panelAdjust.getChildAt(0) as ViewGroup
+
+        // Auto-enhance button at top
+        val dp = resources.displayMetrics.density
+        val autoBtn = android.widget.Button(this, null, 0, R.style.Widget_PG_Button_Pill).apply {
+            setText(R.string.auto_enhance)
+            backgroundTintList = null
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, (36 * dp).toInt()
+            ).also { lp ->
+                lp.gravity = android.view.Gravity.CENTER_HORIZONTAL
+                lp.topMargin = (12 * dp).toInt()
+                lp.bottomMargin = (6 * dp).toInt()
+            }
+            setOnClickListener { runAutoEnhance() }
+        }
+        container.addView(autoBtn, 0)
+
         defs.forEachIndexed { idx, def ->
-            val rowView = container.getChildAt(idx) ?: return@forEachIndexed
+            val rowView = container.getChildAt(idx + 1) ?: return@forEachIndexed
             val rb = ItemAdjRowBinding.bind(rowView)
             rb.adjLabel.setText(def.res)
             rb.adjSeek.max = if (def.bipolar) 200 else 100
@@ -357,6 +387,182 @@ class EditorActivity : AppCompatActivity() {
         vm.setFrame(cur.copy(type = type))
     }
 
+    // ── Text panel ────────────────────────────────────────────────────────────
+
+    private var textSelectedId = -1L
+    private var textSizeBeforeSlide = 0.08f
+    private var textBoldOn = false
+    private var textBgOn = false
+
+    private val textColors = listOf(
+        Color.WHITE, Color.BLACK,
+        Color.parseColor("#FF4444"), Color.parseColor("#FFDD00"),
+        Color.parseColor("#2BD9FE"), Color.parseColor("#FF6B6B"),
+        Color.parseColor("#4AFF8C"), Color.parseColor("#FF8C00")
+    )
+    private var activeTextColor = Color.WHITE
+    private val colorSwatches = mutableListOf<ImageView>()
+
+    private fun setupTextPanel() {
+        b.btnAddText.setOnClickListener { showAddTextDialog() }
+        b.btnDeleteText.setOnClickListener {
+            if (textSelectedId != -1L) {
+                vm.deleteTextLayer(textSelectedId)
+                selectTextLayer(-1L)
+            }
+        }
+
+        // Color swatches
+        textColors.forEachIndexed { i, color ->
+            val swatch = ImageView(this).apply {
+                val dp = resources.displayMetrics.density
+                val size = (32 * dp).toInt()
+                layoutParams = LinearLayout.LayoutParams(size, size).also { lp ->
+                    lp.marginEnd = (8 * dp).toInt()
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(color)
+                }
+                setOnClickListener {
+                    activeTextColor = color
+                    colorSwatches.forEachIndexed { j, sv ->
+                        (sv.background as GradientDrawable).setStroke(
+                            if (j == i) (3 * resources.displayMetrics.density).toInt() else 0,
+                            getColor(R.color.accent)
+                        )
+                    }
+                    if (textSelectedId != -1L)
+                        vm.updateTextLayer(textSelectedId) { it.copy(color = color) }
+                }
+            }
+            colorSwatches.add(swatch)
+            b.textColorGroup.addView(swatch)
+        }
+        // Highlight first swatch
+        (colorSwatches.firstOrNull()?.background as? GradientDrawable)
+            ?.setStroke((3 * resources.displayMetrics.density).toInt(), getColor(R.color.accent))
+
+        // Size slider
+        b.seekTextSize.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onStartTrackingTouch(sb: SeekBar) {
+                textSizeBeforeSlide = vm.editState.value?.textLayers
+                    ?.find { it.id == textSelectedId }?.sizeFraction ?: 0.08f
+            }
+            override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                b.valTextSize.text = p.toString()
+                val frac = (p / 100f * 0.20f).coerceAtLeast(0.02f)
+                if (textSelectedId != -1L)
+                    vm.updateTextLayer(textSelectedId) { it.copy(sizeFraction = frac) }
+            }
+            override fun onStopTrackingTouch(sb: SeekBar) {}
+        })
+
+        // Bold toggle
+        b.chipTextBold.setOnClickListener {
+            textBoldOn = !textBoldOn
+            b.chipTextBold.background = getDrawable(
+                if (textBoldOn) R.drawable.chip_selected_bg else R.drawable.chip_default_bg
+            )
+            if (textSelectedId != -1L)
+                vm.updateTextLayer(textSelectedId) { it.copy(bold = textBoldOn) }
+        }
+
+        // Background toggle
+        b.chipTextBg.setOnClickListener {
+            textBgOn = !textBgOn
+            b.chipTextBg.background = getDrawable(
+                if (textBgOn) R.drawable.chip_selected_bg else R.drawable.chip_default_bg
+            )
+            if (textSelectedId != -1L)
+                vm.updateTextLayer(textSelectedId) { it.copy(hasBackground = textBgOn) }
+        }
+
+        // TextOverlayView callbacks
+        b.textOverlay.onLayerSelected = { id -> selectTextLayer(id) }
+        b.textOverlay.onLayerMoved    = { id, nx, ny -> vm.previewTextMove(id, nx, ny) }
+        b.textOverlay.onLayerMoveCommit = { id, bx, by -> vm.commitTextMove(id, bx, by) }
+    }
+
+    private fun selectTextLayer(id: Long) {
+        textSelectedId = id
+        b.textOverlay.selectedId = id
+        b.btnDeleteText.visibility = if (id != -1L) View.VISIBLE else View.GONE
+
+        val layer = vm.editState.value?.textLayers?.find { it.id == id }
+        if (layer != null) {
+            val sizeProgress = ((layer.sizeFraction / 0.20f) * 100).toInt().coerceIn(1, 100)
+            b.seekTextSize.progress = sizeProgress
+            b.valTextSize.text = sizeProgress.toString()
+            textBoldOn = layer.bold
+            textBgOn   = layer.hasBackground
+            b.chipTextBold.background = getDrawable(if (textBoldOn) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+            b.chipTextBg.background   = getDrawable(if (textBgOn) R.drawable.chip_selected_bg else R.drawable.chip_default_bg)
+            activeTextColor = layer.color
+        }
+    }
+
+    private fun showAddTextDialog() {
+        val et = EditText(this).apply {
+            hint = getString(R.string.text_hint)
+            inputType = InputType.TYPE_CLASS_TEXT
+            setPadding(48, 32, 48, 16)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Add Text")
+            .setView(et)
+            .setPositiveButton(R.string.save) { _, _ ->
+                val t = et.text.toString().trim()
+                if (t.isNotEmpty()) {
+                    val frac = (b.seekTextSize.progress / 100f * 0.20f).coerceAtLeast(0.04f)
+                    vm.addTextLayer(TextLayer(
+                        text = t, x = 0.5f, y = 0.45f,
+                        sizeFraction = frac, color = activeTextColor,
+                        bold = textBoldOn, hasBackground = textBgOn
+                    ))
+                }
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun positionTextOverlay() {
+        b.ivPhoto.post {
+            val d = b.ivPhoto.drawable ?: return@post
+            val iw = d.intrinsicWidth.toFloat()
+            val ih = d.intrinsicHeight.toFloat()
+            if (iw <= 0 || ih <= 0) return@post
+            val vw = b.ivPhoto.width.toFloat()
+            val vh = b.ivPhoto.height.toFloat()
+            val scale = minOf(vw / iw, vh / ih)
+            val dw = iw * scale; val dh = ih * scale
+            val ox = (vw - dw) / 2f; val oy = (vh - dh) / 2f
+            b.textOverlay.setImageRect(RectF(ox, oy, ox + dw, oy + dh))
+            b.textOverlay.layers = vm.editState.value?.textLayers ?: emptyList()
+            b.textOverlay.selectedId = textSelectedId
+        }
+    }
+
+    // ── Auto-enhance ──────────────────────────────────────────────────────────
+
+    private fun runAutoEnhance() {
+        b.loading.visibility = View.VISIBLE
+        lifecycleScope.launch {
+            val newAdj = vm.autoEnhance()
+            if (newAdj != null) updateAdjRows(newAdj)
+            b.loading.visibility = View.GONE
+        }
+    }
+
+    private fun updateAdjRows(adj: Adjustments) {
+        adjRows.forEachIndexed { _, row ->
+            val v = row.getter(adj)
+            row.seek.progress = if (row.bipolar) (v + 100).toInt().coerceIn(0, 200) else v.toInt().coerceIn(0, 100)
+            row.value.text = v.toInt().toString()
+        }
+    }
+
     private fun makeChip(label: String, selected: Boolean): TextView = TextView(this).apply {
         text = label
         textSize = 12f
@@ -379,7 +585,7 @@ class EditorActivity : AppCompatActivity() {
 
     // ── Tabs ──────────────────────────────────────────────────────────────────
 
-    private enum class Tab { FILTER, ADJUST, CROP, TRANSFORM, OVERLAY, FRAME }
+    private enum class Tab { FILTER, ADJUST, CROP, TRANSFORM, OVERLAY, FRAME, TEXT }
     private var currentTab = Tab.FILTER
 
     private fun setupTabs() {
@@ -389,12 +595,13 @@ class EditorActivity : AppCompatActivity() {
         b.btnTransform.setOnClickListener { selectTab(Tab.TRANSFORM) }
         b.btnOverlay.setOnClickListener   { selectTab(Tab.OVERLAY) }
         b.btnFrame.setOnClickListener     { selectTab(Tab.FRAME) }
+        b.btnText.setOnClickListener      { selectTab(Tab.TEXT) }
         selectTab(Tab.FILTER)
     }
 
     private fun selectTab(tab: Tab) {
         currentTab = tab
-        listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform, b.btnOverlay, b.btnFrame)
+        listOf(b.btnFilter, b.btnAdjust, b.btnCrop, b.btnTransform, b.btnOverlay, b.btnFrame, b.btnText)
             .forEachIndexed { i, tv ->
                 val active = tab.ordinal == i
                 tv.setBackgroundResource(
@@ -402,13 +609,16 @@ class EditorActivity : AppCompatActivity() {
                 )
                 tv.setTextColor(getColor(if (active) R.color.white else R.color.text_secondary))
             }
-        listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform, b.panelOverlay, b.panelFrame)
+        listOf(b.panelFilter, b.panelAdjust, b.panelCrop, b.panelTransform, b.panelOverlay, b.panelFrame, b.panelText)
             .forEachIndexed { i, pv -> pv.visibility = if (tab.ordinal == i) View.VISIBLE else View.GONE }
 
         val inCrop = tab == Tab.CROP
+        val inText = tab == Tab.TEXT
         b.cropOverlay.visibility = if (inCrop) View.VISIBLE else View.GONE
-        b.tvHint.visibility = if (inCrop) View.GONE else View.VISIBLE
+        b.textOverlay.visibility = if (inText) View.VISIBLE else View.GONE
+        b.tvHint.visibility = if (inCrop || inText) View.GONE else View.VISIBLE
         if (inCrop) positionCropOverlay()
+        if (inText) positionTextOverlay()
     }
 
     private fun positionCropOverlay() {
