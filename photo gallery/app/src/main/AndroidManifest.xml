@@ -47,6 +47,11 @@
             android:name=".AlbumDetailActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".CollageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.PolishGallery" />
+
     </application>
 
 </manifest>

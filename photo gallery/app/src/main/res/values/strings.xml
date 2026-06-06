@@ -66,4 +66,12 @@
     <string name="cancel">Cancel</string>
     <string name="saved">Saved to gallery</string>
     <string name="save_failed">Save failed</string>
+
+    <!-- Collage -->
+    <string name="collage">Collage</string>
+    <string name="collage_layout">Choose Layout</string>
+
+    <!-- Batch filter -->
+    <string name="batch_filter_title">Apply Filter to %1$d Photos</string>
+    <string name="batch_filter_saved">Saved %1$d of %2$d photos</string>
 </resources>

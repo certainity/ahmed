@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -14,6 +15,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.ActivityOptionsCompat
 import androidx.core.content.ContextCompat
@@ -22,8 +24,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import com.ahmed.photogallery.adapter.GalleryAdapter
 import com.ahmed.photogallery.databinding.FragmentGalleryBinding
+import com.ahmed.photogallery.model.Filters
 import com.ahmed.photogallery.model.GalleryItem
 import com.ahmed.photogallery.model.Photo
+import com.ahmed.photogallery.utils.BitmapUtils
 import com.ahmed.photogallery.utils.MediaStoreUtils
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
@@ -233,6 +237,7 @@ class GalleryFragment : Fragment() {
                 } else {
                     b.selectionBar.visibility = View.VISIBLE
                     b.tvSelCount.text = "$count ${getString(R.string.selected)}"
+                    b.btnSelCollage.visibility = if (count in 2..8) View.VISIBLE else View.GONE
                 }
             }
         )
@@ -247,8 +252,53 @@ class GalleryFragment : Fragment() {
         b.recycler.adapter = adapter
         b.recycler.setHasFixedSize(false)
 
+        b.btnSelCollage.setOnClickListener { launchCollage() }
+        b.btnSelFilter.setOnClickListener { showBatchFilterDialog() }
         b.btnSelShare.setOnClickListener { shareSelected() }
         b.btnSelDelete.setOnClickListener { confirmDeleteSelected() }
+    }
+
+    private fun launchCollage() {
+        val sel = adapter.getSelectedPhotos()
+        if (sel.size < 2) return
+        CollageActivity.start(requireContext(), sel.map { it.uri })
+        adapter.clearSelection()
+        b.selectionBar.visibility = View.GONE
+    }
+
+    private fun showBatchFilterDialog() {
+        val sel = adapter.getSelectedPhotos()
+        if (sel.isEmpty()) return
+        val filters = Filters.getAll().drop(1) // skip Normal
+        val names = filters.map { it.name }.toTypedArray()
+        AlertDialog.Builder(requireContext())
+            .setTitle(getString(R.string.batch_filter_title, sel.size))
+            .setItems(names) { _, idx -> batchApplyFilter(sel, filters[idx]) }
+            .show()
+    }
+
+    private fun batchApplyFilter(photos: List<Photo>, filter: com.ahmed.photogallery.model.PhotoFilter) {
+        val ctx = requireContext()
+        val total = photos.size
+        var done = 0
+        viewLifecycleOwner.lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                photos.forEach { photo ->
+                    runCatching {
+                        val src = ctx.contentResolver.openInputStream(photo.uri)?.use { stream ->
+                            BitmapFactory.decodeStream(stream)
+                        } ?: return@runCatching
+                        val result = filter.colorMatrix?.let { BitmapUtils.applyColorMatrix(src, it) } ?: src
+                        BitmapUtils.saveToGallery(ctx, result, "${filter.name}_${photo.id}")
+                        done++
+                    }
+                }
+            }
+            adapter.clearSelection()
+            b.selectionBar.visibility = View.GONE
+            Toast.makeText(ctx, getString(R.string.batch_filter_saved, done, total), Toast.LENGTH_SHORT).show()
+            loadPhotos()
+        }
     }
 
     private fun shareSelected() {

@@ -9,6 +9,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import com.ahmed.photogallery.engine.EditState
 import com.ahmed.photogallery.model.Adjustments
+import com.ahmed.photogallery.model.CollageLayout
 import com.ahmed.photogallery.model.CropConfig
 import com.ahmed.photogallery.model.FrameConfig
 import com.ahmed.photogallery.model.FrameType
@@ -476,6 +477,45 @@ object BitmapUtils {
             drawBitmap(src, pad.toFloat(), pad.toFloat(), null)
         }
         return dst
+    }
+
+    // ── Collage renderer ──────────────────────────────────────────────────────
+
+    fun renderCollage(
+        bitmaps: List<Bitmap>,
+        layout: CollageLayout,
+        outputSize: Int = 1080,
+        gapPx: Int = 6
+    ): Bitmap {
+        val out = Bitmap.createBitmap(outputSize, outputSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(Color.BLACK)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+
+        layout.cells.forEachIndexed { i, cell ->
+            val bmp = bitmaps[i % bitmaps.size]
+            val dstL = cell.left   * outputSize + if (cell.left   > 0f) gapPx / 2f else 0f
+            val dstT = cell.top    * outputSize + if (cell.top    > 0f) gapPx / 2f else 0f
+            val dstR = cell.right  * outputSize - if (cell.right  < 1f) gapPx / 2f else 0f
+            val dstB = cell.bottom * outputSize - if (cell.bottom < 1f) gapPx / 2f else 0f
+            val dst  = RectF(dstL, dstT, dstR, dstB)
+            val dstW = dst.width(); val dstH = dst.height()
+
+            val srcAspect = bmp.width.toFloat() / bmp.height
+            val dstAspect = dstW / dstH
+            val src: Rect
+            if (srcAspect > dstAspect) {
+                val sw = (bmp.height * dstAspect).toInt()
+                val sx = (bmp.width - sw) / 2
+                src = Rect(sx, 0, sx + sw, bmp.height)
+            } else {
+                val sh = (bmp.width / dstAspect).toInt()
+                val sy = (bmp.height - sh) / 2
+                src = Rect(0, sy, bmp.width, sy + sh)
+            }
+            canvas.drawBitmap(bmp, src, dst, paint)
+        }
+        return out
     }
 
     // ── Save to gallery ────────────────────────────────────────────────────────
