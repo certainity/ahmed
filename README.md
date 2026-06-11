@@ -5,13 +5,13 @@ A YouTube-style movie shelf for your kids that streams **only** video files from
 This build is already configured for this Drive folder ID:
 
 ```txt
-1AjHHDGV6G9FHbNL2GaVaIFsIwwANJf9l
+1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
 ```
 
 Source folder URL:
 
 ```txt
-https://drive.google.com/drive/folders/1AjHHDGV6G9FHbNL2GaVaIFsIwwANJf9l
+https://drive.google.com/drive/folders/1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
 ```
 
 The important safety idea is simple: the React app never talks directly to Google Drive. A small Node/Express backend lists and streams only videos discovered under the configured `GOOGLE_DRIVE_FOLDER_ID` and its approved subfolders.
@@ -72,7 +72,7 @@ cp client/.env.example client/.env
 Your copied `server/.env` will already contain:
 
 ```env
-GOOGLE_DRIVE_FOLDER_ID=1AjHHDGV6G9FHbNL2GaVaIFsIwwANJf9l
+GOOGLE_DRIVE_FOLDER_ID=1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
 INCLUDE_SUBFOLDERS=true
 MAX_SCAN_DEPTH=8
 MAX_FOLDERS=750
