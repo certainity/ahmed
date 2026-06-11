@@ -1,0 +1,46 @@
+
+> kids-drive-cinema@1.0.0 dev
+> concurrently -n server,client -c auto "npm run dev --workspace server" "npm run dev --workspace client"
+
+[server] 
+[server] > kids-drive-cinema-server@1.0.0 dev
+[server] > node --watch index.js
+[server] 
+[client] 
+[client] > kids-drive-cinema-client@1.0.0 dev
+[client] > vite --host 0.0.0.0
+[client] 
+[client] Port 5173 is in use, trying another one...
+[client] Port 5174 is in use, trying another one...
+[client] 
+[client]   [32m[1mVITE[22m v8.0.16[39m  [2mready in [0m[1m291[22m[2m[0m ms[22m
+[client] 
+[client]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5175[22m/[39m
+[client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://172.25.192.1:[1m5175[22m/[39m
+[client]   [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.18.195:[1m5175[22m/[39m
+[server] node:events:486
+[server]       throw er; // Unhandled 'error' event
+[server]       ^
+[server] 
+[server] Error: listen EADDRINUSE: address already in use :::5174
+[server]     at Server.setupListenHandle [as _listen2] (node:net:1948:16)
+[server]     at listenInCluster (node:net:2005:12)
+[server]     at Server.listen (node:net:2110:7)
+[server]     at app.listen (F:\codex\kids-drive-cinema-google-folder\kids-drive-cinema\node_modules\express\lib\application.js:635:24)
+[server]     at file:///F:/codex/kids-drive-cinema-google-folder/kids-drive-cinema/server/index.js:546:5
+[server]     at ModuleJob.run (node:internal/modules/esm/module_job:430:25)
+[server]     at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+[server]     at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:661:26)
+[server]     at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+[server] Emitted 'error' event on Server instance at:
+[server]     at emitErrorNT (node:net:1984:8)
+[server]     at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+[server]   code: 'EADDRINUSE',
+[server]   errno: -4091,
+[server]   syscall: 'listen',
+[server]   address: '::',
+[server]   port: 5174
+[server] }
+[server] 
+[server] Node.js v24.14.1
+[server] Failed running 'index.js'. Waiting for file changes before restarting...
