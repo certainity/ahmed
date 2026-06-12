@@ -236,6 +236,17 @@ function isHlsComplete(paths) {
   return fs.readFileSync(paths.playlist, 'utf8').includes('#EXT-X-ENDLIST');
 }
 
+function getRequiredHlsSegments(req) {
+  const requestedStart = Number(req.query.start || 0);
+  const startSeconds = Number.isFinite(requestedStart) && requestedStart > 0 ? requestedStart : 0;
+  const initialSegments = Number(process.env.HLS_START_SEGMENTS || 24);
+  if (!startSeconds) return initialSegments;
+
+  const resumeBufferSeconds = Number(process.env.HLS_RESUME_BUFFER_SECONDS || 120);
+  const segmentSeconds = Number(process.env.HLS_SEGMENT_SECONDS || 2);
+  return Math.max(initialSegments, Math.ceil((startSeconds + resumeBufferSeconds) / segmentSeconds));
+}
+
 async function waitForHlsBuffer(paths, minSegments, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -705,11 +716,21 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       return;
     }
 
-    await waitForHlsBuffer(
+    const requiredSegments = getRequiredHlsSegments(req);
+    const bufferReady = await waitForHlsBuffer(
       paths,
-      Number(process.env.HLS_START_SEGMENTS || 24),
+      requiredSegments,
       Number(process.env.HLS_BUFFER_TIMEOUT_MS || 25000)
     );
+    if (!bufferReady) {
+      res.status(202).json({
+        status: 'preparing',
+        message: 'Preparing enough video before playback starts.',
+        segmentsReady: countHlsSegments(paths),
+        segmentsNeeded: requiredSegments
+      });
+      return;
+    }
 
     const playlist = fs.readFileSync(paths.playlist, 'utf8')
       .replace(/(segment-\d{5}\.ts)(?!\?)/g, `$1?library=${libraryKey}`);
