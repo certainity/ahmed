@@ -41,7 +41,8 @@ function normalizeApiVideo(video) {
     ...video,
     thumbnailUrl: apiUrl(video.thumbnailUrl),
     streamUrl: apiUrl(video.streamUrl),
-    hlsUrl: video.hlsUrl ? apiUrl(video.hlsUrl) : video.hlsUrl
+    hlsUrl: video.hlsUrl ? apiUrl(video.hlsUrl) : video.hlsUrl,
+    captionUrl: video.captionUrl ? apiUrl(video.captionUrl) : video.captionUrl
   };
 }
 
@@ -840,7 +841,17 @@ function WatchPlayer({
               rememberProgress();
               onEnded(video.id);
             }}
-          />
+          >
+            {video.captionsReady && video.captionUrl ? (
+              <track
+                kind="captions"
+                src={video.captionUrl}
+                srcLang="en"
+                label="English"
+                default
+              />
+            ) : null}
+          </video>
           {showPlayPrompt ? (
             <button className="player-play-overlay" onClick={startPlayback} type="button">
               <span aria-hidden="true">▶</span>

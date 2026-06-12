@@ -13,7 +13,8 @@
     "start": "npm run start --workspace server",
     "lint:server": "node --check server/index.js",
     "lint:client": "npm run build --workspace client",
-    "lint": "npm run lint:server && npm run lint:client"
+    "lint": "npm run lint:server && npm run lint:client",
+    "captions:one": "node server/scripts/generate-caption.js"
   },
   "devDependencies": {
     "concurrently": "^9.2.0"
