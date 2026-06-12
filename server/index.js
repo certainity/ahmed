@@ -220,9 +220,9 @@ async function ensureHlsTranscode(video) {
     '-ac', '2',
     '-max_muxing_queue_size', '2048',
     '-f', 'hls',
-    '-hls_time', '6',
+    '-hls_time', '2',
     '-hls_list_size', '0',
-    '-hls_flags', 'independent_segments',
+    '-hls_flags', 'split_by_time',
     '-hls_segment_filename', paths.segmentPattern,
     paths.playlist
   ];
@@ -620,11 +620,13 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const paths = await ensureHlsTranscode(video);
-    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 30000));
+    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 25000));
     if (!ready) {
-      const err = new Error('Preparing playable audio stream. Try play again in a few seconds.');
-      err.status = 202;
-      throw err;
+      res.status(202).json({
+        status: 'preparing',
+        message: 'Preparing playable audio stream. Try play again in a few seconds.'
+      });
+      return;
     }
 
     res.status(200).set({
