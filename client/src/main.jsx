@@ -694,6 +694,12 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
+      const savedStart = progress[video.id]?.currentTime || 0;
+      const hlsSource = new URL(playback.src, window.location.href);
+      if (savedStart > 5) {
+        hlsSource.searchParams.set('start', String(Math.max(0, Math.floor(savedStart - 3))));
+      }
+
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
@@ -702,17 +708,40 @@ function WatchPlayer({
         startFragPrefetch: true
       });
       hlsRef.current = hls;
-      hls.loadSource(playback.src);
+      hls.loadSource(hlsSource.href);
       hls.attachMedia(player);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         tryStartPlayback();
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (!data?.fatal && (data?.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data?.details === Hls.ErrorDetails.FRAG_LOAD_ERROR)) {
+          setPlaybackStatus('Preparing the next part of the stream...');
+          hls.startLoad(Math.max(0, player.currentTime || 0));
+          return;
+        }
+
+        if (data?.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          setPlaybackStatus('Reconnecting stream...');
+          hls.startLoad(Math.max(0, player.currentTime || 0));
+          return;
+        }
+
         if (data?.fatal) {
           setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
         }
       });
+      const resumeHls = () => {
+        setPlaybackStatus('Preparing the next part of the stream...');
+        hls.startLoad(Math.max(0, player.currentTime || 0));
+      };
+      const clearHlsStatus = () => setPlaybackStatus('');
+      player.addEventListener('waiting', resumeHls);
+      player.addEventListener('stalled', resumeHls);
+      player.addEventListener('playing', clearHlsStatus);
       return () => {
+        player.removeEventListener('waiting', resumeHls);
+        player.removeEventListener('stalled', resumeHls);
+        player.removeEventListener('playing', clearHlsStatus);
         hls.destroy();
         hlsRef.current = null;
       };
@@ -725,7 +754,7 @@ function WatchPlayer({
       player.removeAttribute('src');
       player.load();
     };
-  }, [video, playback]);
+  }, [video, playback, progress]);
 
   useEffect(() => {
     const player = playerRef.current;
