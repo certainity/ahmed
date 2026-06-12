@@ -506,6 +506,7 @@ function VideoGrid({ videos, onPlay, favorites, onToggleFavorite, progress }) {
 
 function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   const playerRef = useRef(null);
+  const shellRef = useRef(null);
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -552,8 +553,23 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     onClose();
   }
 
-  function toggleFullscreen() {
+  async function toggleFullscreen() {
+    const shell = shellRef.current;
+    if (!shell) return;
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+      window.setTimeout(() => tryStartPlayback({ mutedFallback: true }), 80);
+      return;
+    }
+
     setIsFullscreen((current) => !current);
+
+    if (!isFullscreen && shell.requestFullscreen) {
+      await shell.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
+    }
+
     window.setTimeout(() => tryStartPlayback({ mutedFallback: true }), 80);
   }
 
@@ -578,6 +594,15 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
       document.body.style.overflow = previousOverflow;
     };
   }, [video]);
+
+  useEffect(() => {
+    function onFullscreenChange() {
+      setIsFullscreen(document.fullscreenElement === shellRef.current);
+    }
+
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', onFullscreenChange);
+  }, []);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -631,7 +656,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={`Playing ${video.title}`}>
       <div className="modal-backdrop" onClick={closePlayer} />
-      <div className={`player-shell ${isFullscreen ? 'fullscreen-mode' : ''}`}>
+      <div ref={shellRef} className={`player-shell ${isFullscreen ? 'fullscreen-mode' : ''}`}>
         <div className="player-topline">
           <h2>{video.title} <span>({video.folderPathLabel})</span></h2>
           <button className="close" onClick={closePlayer} aria-label="Close player">
