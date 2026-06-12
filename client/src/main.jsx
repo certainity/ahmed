@@ -147,7 +147,7 @@ async function waitForHlsReady(src, setPlaybackStatus, signal) {
       throw new Error('Could not prepare this video for playback.');
     }
 
-    setPlaybackStatus('Preparing full video for smooth playback...');
+    setPlaybackStatus('Preparing video buffer for smooth playback...');
     await new Promise((resolve, reject) => {
       const timeout = window.setTimeout(resolve, 5000);
       signal?.addEventListener('abort', () => {
@@ -157,7 +157,7 @@ async function waitForHlsReady(src, setPlaybackStatus, signal) {
     });
   }
 
-  throw new Error('Still preparing this video. Try again in a few minutes.');
+  throw new Error('Still preparing this video. Try again in a minute.');
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {

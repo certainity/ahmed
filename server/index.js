@@ -151,7 +151,34 @@ function isVideoFile(file) {
 function compareVideos(a, b) {
   const folderCompare = a.folderPathLabel.localeCompare(b.folderPathLabel, undefined, { numeric: true, sensitivity: 'base' });
   if (folderCompare !== 0) return folderCompare;
+  if (a.title === b.title && a.directPlayable !== b.directPlayable) {
+    return a.directPlayable ? -1 : 1;
+  }
   return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
+}
+
+function duplicateKey(video) {
+  return `${video.folderPathLabel.toLowerCase()}::${video.title.toLowerCase()}`;
+}
+
+function preferPlayableDuplicates(videos) {
+  const groups = new Map();
+  for (const video of videos) {
+    const key = duplicateKey(video);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(video);
+  }
+
+  const filtered = [];
+  for (const group of groups.values()) {
+    const playable = group.filter((video) => video.directPlayable);
+    if (playable.length) {
+      filtered.push(...playable);
+    } else {
+      filtered.push(...group);
+    }
+  }
+  return filtered;
 }
 
 function normalizeVideo(file, folderContext, libraryKey) {
@@ -234,6 +261,15 @@ function isHlsReady(paths) {
   if (!fs.existsSync(paths.readyMarker) || !fs.existsSync(paths.playlist)) return false;
   const playlist = fs.readFileSync(paths.playlist, 'utf8');
   return playlist.includes('#EXT-X-ENDLIST');
+}
+
+function isHlsPlayable(paths) {
+  if (isHlsReady(paths)) return true;
+  if (!fs.existsSync(paths.playlist)) return false;
+  const segmentCount = fs.readdirSync(paths.dir)
+    .filter((name) => /^segment-\d{5}\.ts$/.test(name))
+    .length;
+  return segmentCount >= Number(process.env.HLS_MIN_READY_SEGMENTS || 30);
 }
 
 async function ensureHlsTranscode(libraryKey, video) {
@@ -375,8 +411,9 @@ async function scanApprovedFolderTree(libraryKey) {
     }
   }
 
-  videos.sort(compareVideos);
-  return { videos, folderCount, warnings };
+  const filteredVideos = preferPlayableDuplicates(videos);
+  filteredVideos.sort(compareVideos);
+  return { videos: filteredVideos, folderCount, warnings };
 }
 
 async function listVideos({ force = false, libraryKey = 'kids' } = {}) {
@@ -678,10 +715,10 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const paths = await ensureHlsTranscode(libraryKey, video);
-    if (!isHlsReady(paths)) {
+    if (!isHlsPlayable(paths)) {
       res.status(202).json({
         status: 'preparing',
-        message: 'Preparing the full video for smooth playback. Try play again in a few minutes.'
+        message: 'Preparing enough video for smooth playback. Try play again in a minute.'
       });
       return;
     }
