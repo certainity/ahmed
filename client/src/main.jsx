@@ -758,6 +758,7 @@ function WatchPlayer({
   if (!video) return null;
 
   function startPlayback() {
+    setShowPlayPrompt(false);
     tryStartPlayback();
   }
 
