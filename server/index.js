@@ -563,14 +563,9 @@ app.get('/api/videos', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
     const force = req.query.refresh === '1';
-    const playableOnly = req.query.playable === '1';
     const query = String(req.query.q || '').trim().toLowerCase();
     let videos = await listVideos({ force, libraryKey });
     const videoCache = getLibraryCache(libraryKey);
-
-    if (playableOnly) {
-      videos = videos.filter((video) => video.directPlayable);
-    }
 
     if (query) {
       videos = videos.filter((video) =>

@@ -12,7 +12,6 @@ const STORAGE_KEYS = {
 const IS_MOVIE_SITE = typeof window !== 'undefined' && window.location.hostname.includes('drive-movies-cinema');
 const API_ORIGIN = IS_MOVIE_SITE ? 'https://kids-drive-cinema.onrender.com' : '';
 const API_LIBRARY = IS_MOVIE_SITE ? 'movie' : 'kids';
-const FAST_PLAYABLE_ONLY = !IS_MOVIE_SITE;
 const APP_COPY = IS_MOVIE_SITE
   ? {
       title: 'Drive Movies',
@@ -206,11 +205,7 @@ function useVideos() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams();
-      if (refresh) params.set('refresh', '1');
-      if (FAST_PLAYABLE_ONLY) params.set('playable', '1');
-      const query = params.toString();
-      const response = await fetch(apiUrl(`/api/videos${query ? `?${query}` : ''}`));
+      const response = await fetch(apiUrl(`/api/videos${refresh ? '?refresh=1' : ''}`));
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || payload.error || 'Could not load videos.');
       setVideos((payload.videos || []).map(normalizeApiVideo));
