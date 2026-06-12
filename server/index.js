@@ -20,6 +20,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
+const HLS_CACHE_VERSION = 'v3';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
   fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
@@ -202,7 +203,7 @@ function publicVideo(video) {
 function getHlsPaths(libraryKey, videoId) {
   const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
   const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
-  const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${safeId}`);
+  const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${HLS_CACHE_VERSION}-${safeId}`);
   return {
     dir,
     playlist: path.join(dir, 'master.m3u8'),
@@ -223,6 +224,27 @@ async function waitForFile(filePath, timeoutMs = 30000) {
   return fs.existsSync(filePath);
 }
 
+function countHlsSegments(paths) {
+  if (!fs.existsSync(paths.dir)) return 0;
+  return fs.readdirSync(paths.dir)
+    .filter((name) => /^segment-\d{5}\.ts$/.test(name))
+    .length;
+}
+
+function isHlsComplete(paths) {
+  if (!fs.existsSync(paths.playlist)) return false;
+  return fs.readFileSync(paths.playlist, 'utf8').includes('#EXT-X-ENDLIST');
+}
+
+async function waitForHlsBuffer(paths, minSegments, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (isHlsComplete(paths) || countHlsSegments(paths) >= minSegments) return true;
+    await sleep(500);
+  }
+  return isHlsComplete(paths) || countHlsSegments(paths) >= minSegments;
+}
+
 function ffmpegHeaderString(headers) {
   return Object.entries(headers)
     .map(([key, value]) => `${key}: ${value}`)
@@ -231,12 +253,12 @@ function ffmpegHeaderString(headers) {
 
 async function ensureHlsTranscode(libraryKey, video) {
   const paths = getHlsPaths(libraryKey, video.id);
-  if (fs.existsSync(paths.playlist)) return paths;
-
   const jobKey = `${libraryKey}:${video.id}`;
   const existingJob = hlsJobs.get(jobKey);
+  if (fs.existsSync(paths.playlist) && (isHlsComplete(paths) || existingJob)) return paths;
   if (existingJob) return existingJob.paths;
 
+  fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
@@ -245,6 +267,10 @@ async function ensureHlsTranscode(libraryKey, video) {
     '-hide_banner',
     '-loglevel', 'warning',
     '-headers', ffmpegHeaderString(headers),
+    '-reconnect', '1',
+    '-reconnect_streamed', '1',
+    '-reconnect_delay_max', '5',
+    '-fflags', '+genpts',
     '-i', driveUrl,
     '-map', '0:v:0',
     '-map', '0:a:0?',
@@ -252,11 +278,13 @@ async function ensureHlsTranscode(libraryKey, video) {
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ac', '2',
+    '-avoid_negative_ts', 'make_zero',
     '-max_muxing_queue_size', '2048',
     '-f', 'hls',
     '-hls_time', '2',
     '-hls_list_size', '0',
-    '-hls_flags', 'split_by_time',
+    '-hls_playlist_type', 'event',
+    '-hls_flags', 'split_by_time+temp_file',
     '-hls_segment_filename', paths.segmentPattern,
     paths.playlist
   ];
@@ -673,6 +701,12 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       });
       return;
     }
+
+    await waitForHlsBuffer(
+      paths,
+      Number(process.env.HLS_START_SEGMENTS || 24),
+      Number(process.env.HLS_BUFFER_TIMEOUT_MS || 25000)
+    );
 
     const playlist = fs.readFileSync(paths.playlist, 'utf8')
       .replace(/(segment-\d{5}\.ts)(?!\?)/g, `$1?library=${libraryKey}`);

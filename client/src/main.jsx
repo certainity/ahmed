@@ -695,7 +695,10 @@ function WatchPlayer({
     if (playback.hls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false
+        lowLatencyMode: false,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        startFragPrefetch: true
       });
       hlsRef.current = hls;
       hls.loadSource(playback.src);
