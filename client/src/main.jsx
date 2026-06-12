@@ -41,8 +41,7 @@ function normalizeApiVideo(video) {
     ...video,
     thumbnailUrl: apiUrl(video.thumbnailUrl),
     streamUrl: apiUrl(video.streamUrl),
-    hlsUrl: video.hlsUrl ? apiUrl(video.hlsUrl) : video.hlsUrl,
-    captionUrl: video.captionUrl ? apiUrl(video.captionUrl) : video.captionUrl
+    hlsUrl: video.hlsUrl ? apiUrl(video.hlsUrl) : video.hlsUrl
   };
 }
 
@@ -141,6 +140,36 @@ function getPlaybackSource(video) {
     mode: 'Direct browser playback',
     type: video.mimeType || 'video/mp4'
   };
+}
+
+function hlsUrlWithStart(src, startSeconds) {
+  if (!startSeconds || startSeconds <= 5) return src;
+  const url = new URL(src, window.location.origin);
+  url.searchParams.set('start', String(Math.floor(startSeconds)));
+  if (/^https?:\/\//i.test(src)) return url.href;
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+async function waitForHlsReady(src, setPlaybackStatus, signal) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const response = await fetch(src, { cache: 'no-store', signal });
+    if (response.ok) return;
+
+    if (response.status !== 202) {
+      throw new Error('Could not prepare this video for playback.');
+    }
+
+    setPlaybackStatus('Preparing playback buffer...');
+    await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(resolve, 2000);
+      signal?.addEventListener('abort', () => {
+        window.clearTimeout(timeout);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    });
+  }
+
+  throw new Error('Still preparing this video. Try again shortly.');
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {
@@ -610,7 +639,6 @@ function WatchPlayer({
   const playerRef = useRef(null);
   const shellRef = useRef(null);
   const hlsRef = useRef(null);
-  const initialProgressRef = useRef({});
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -699,74 +727,43 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
-      const savedStart = initialProgressRef.current[video.id] ?? progress[video.id]?.currentTime ?? 0;
-      initialProgressRef.current[video.id] = savedStart;
-      const hlsSource = new URL(playback.src, window.location.href);
-      if (savedStart > 5) {
-        hlsSource.searchParams.set('start', String(Math.max(0, Math.floor(savedStart - 3))));
-      }
-      let lastRecoveryAt = 0;
-
+      const saved = progress[video.id]?.currentTime || 0;
+      const hlsSource = hlsUrlWithStart(playback.src, saved);
+      const controller = new AbortController();
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 180,
+        autoStartLoad: false,
+        maxBufferLength: 120,
+        maxMaxBufferLength: 300,
+        maxBufferSize: 180 * 1000 * 1000,
+        backBufferLength: 30,
         startFragPrefetch: true
       });
       hlsRef.current = hls;
-      hls.loadSource(hlsSource.href);
-      hls.attachMedia(player);
+      waitForHlsReady(hlsSource, setPlaybackStatus, controller.signal)
+        .then(() => {
+          if (controller.signal.aborted) return;
+          setPlaybackStatus('');
+          hls.loadSource(hlsSource);
+          hls.attachMedia(player);
+        })
+        .catch((error) => {
+          if (error.name !== 'AbortError') {
+            setPlaybackStatus(error.message || 'Could not prepare this video for playback.');
+          }
+        });
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        hls.startLoad(saved > 5 ? saved : -1);
         tryStartPlayback();
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (!data?.fatal && (data?.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data?.details === Hls.ErrorDetails.FRAG_LOAD_ERROR)) {
-          resumeHls();
-          return;
-        }
-
-        if (data?.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-          setPlaybackStatus('Reconnecting stream...');
-          hls.startLoad(Math.max(0, player.currentTime || 0));
-          return;
-        }
-
         if (data?.fatal) {
           setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
         }
       });
-      const resumeHls = () => {
-        const now = Date.now();
-        if (now - lastRecoveryAt < 8000) return;
-        lastRecoveryAt = now;
-        setPlaybackStatus('Preparing the next part of the stream...');
-        hls.startLoad(Math.max(0, player.currentTime || 0));
-      };
-      const handleSeeking = () => {
-        if (!player.seekable.length) {
-          resumeHls();
-          return;
-        }
-
-        const seekableEnd = player.seekable.end(player.seekable.length - 1);
-        if (player.currentTime > seekableEnd - 3) {
-          player.currentTime = Math.max(0, seekableEnd - 3);
-          setPlaybackStatus('Preparing more of the video before skipping further...');
-        }
-
-        hls.startLoad(Math.max(0, player.currentTime || 0));
-      };
-      const clearHlsStatus = () => setPlaybackStatus('');
-      player.addEventListener('waiting', resumeHls);
-      player.addEventListener('stalled', resumeHls);
-      player.addEventListener('seeking', handleSeeking);
-      player.addEventListener('playing', clearHlsStatus);
       return () => {
-        player.removeEventListener('waiting', resumeHls);
-        player.removeEventListener('stalled', resumeHls);
-        player.removeEventListener('seeking', handleSeeking);
-        player.removeEventListener('playing', clearHlsStatus);
+        controller.abort();
         hls.destroy();
         hlsRef.current = null;
       };
@@ -788,18 +785,11 @@ function WatchPlayer({
     if (!saved || saved <= 5) return undefined;
 
     function restoreProgress() {
-      if (playback?.hls) {
-        const seekableEnd = player.seekable.length
-          ? player.seekable.end(player.seekable.length - 1)
-          : 0;
-        if (!seekableEnd || saved >= seekableEnd - 6) return;
-      }
       player.currentTime = saved;
     }
-    const restoreEvent = playback?.hls ? 'canplay' : 'loadedmetadata';
-    player.addEventListener(restoreEvent, restoreProgress, { once: true });
-    return () => player.removeEventListener(restoreEvent, restoreProgress);
-  }, [video, playback, progress]);
+    player.addEventListener('loadedmetadata', restoreProgress, { once: true });
+    return () => player.removeEventListener('loadedmetadata', restoreProgress);
+  }, [video, progress]);
 
   if (!video) return null;
 

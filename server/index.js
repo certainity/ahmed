@@ -19,11 +19,6 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
-const CAPTION_CACHE_DIR = path.resolve(__dirname, 'cache-captions');
-if (!fs.existsSync(CAPTION_CACHE_DIR)) {
-  fs.mkdirSync(CAPTION_CACHE_DIR, { recursive: true });
-}
-
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
 const HLS_CACHE_VERSION = 'v3';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
@@ -186,11 +181,9 @@ function normalizeVideo(file, folderContext, libraryKey) {
     depth: folderContext.depth || 0,
     streamUrl: `/api/stream/${file.id}?library=${libraryKey}`,
     hlsUrl: `/api/hls/${file.id}/master.m3u8?library=${libraryKey}`,
-    captionUrl: `/api/captions/${file.id}/en.vtt?library=${libraryKey}`,
     directPlayable: isBrowserNativeVideo(file),
     thumbnailUrl: `/api/thumbnails/${file.id}?library=${libraryKey}&v=${encodeURIComponent(file.modifiedTime || '')}`,
-    _thumbnailLink: file.thumbnailLink || null,
-    _captionPath: getCaptionPath(libraryKey, file.id)
+    _thumbnailLink: file.thumbnailLink || null
   };
 }
 
@@ -203,17 +196,8 @@ function isBrowserNativeVideo(file) {
 }
 
 function publicVideo(video) {
-  const { _thumbnailLink, _captionPath, ...safeVideo } = video;
-  return {
-    ...safeVideo,
-    captionsReady: Boolean(_captionPath && fs.existsSync(_captionPath))
-  };
-}
-
-function getCaptionPath(libraryKey, videoId) {
-  const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
-  const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
-  return path.join(CAPTION_CACHE_DIR, `${safeLibrary}-${safeId}.vtt`);
+  const { _thumbnailLink, ...safeVideo } = video;
+  return safeVideo;
 }
 
 function getHlsPaths(libraryKey, videoId) {
@@ -649,28 +633,6 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
     }
 
     return sendPlaceholderThumbnail(res, video.title);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/captions/:id/en.vtt', async (req, res, next) => {
-  try {
-    const libraryKey = getLibraryKey(req);
-    await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
-    const captionPath = getCaptionPath(libraryKey, req.params.id);
-
-    if (!fs.existsSync(captionPath)) {
-      const err = new Error('Captions have not been generated for this video yet.');
-      err.status = 404;
-      throw err;
-    }
-
-    res.status(200).set({
-      'Content-Type': 'text/vtt; charset=utf-8',
-      'Cache-Control': 'private, max-age=86400'
-    });
-    fs.createReadStream(captionPath).pipe(res);
   } catch (error) {
     next(error);
   }
