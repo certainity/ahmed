@@ -119,7 +119,7 @@ function useVideos() {
   return { videos, library, loading, error, refreshedAt, reload: load };
 }
 
-function Header({ search, setSearch, parentUnlocked, setParentUnlocked }) {
+function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefresh, loading }) {
   const [pin, setPin] = useState('');
   const expectedPin = import.meta.env.VITE_PARENT_PIN || '2468';
 
@@ -158,6 +158,14 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked }) {
       </div>
 
       <div className="header-actions">
+        <button
+          className="pill-btn sync-btn"
+          onClick={() => onRefresh({ refresh: true })}
+          disabled={loading}
+          type="button"
+        >
+          {loading ? 'Syncing' : 'Sync'}
+        </button>
         {parentUnlocked ? (
           <button
             className="pill-btn"
@@ -501,6 +509,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   function tryStartPlayback({ mutedFallback = false, forceUnmute = false } = {}) {
     const player = playerRef.current;
@@ -536,16 +545,30 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     if (player) {
       player.pause();
     }
+    setIsFullscreen(false);
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
     onClose();
+  }
+
+  function toggleFullscreen() {
+    setIsFullscreen((current) => !current);
+    window.setTimeout(() => tryStartPlayback({ mutedFallback: true }), 80);
   }
 
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === 'Escape') closePlayer();
+      if (event.key !== 'Escape') return;
+      if (isFullscreen) {
+        setIsFullscreen(false);
+        return;
+      }
+      closePlayer();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [onClose]);
+  }, [isFullscreen, onClose]);
 
   useEffect(() => {
     if (!video) return undefined;
@@ -565,7 +588,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
 
     player.src = playback.src;
     player.load();
-    tryStartPlayback();
+    tryStartPlayback({ mutedFallback: true });
     return undefined;
   }, [video, playback]);
 
@@ -608,7 +631,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={`Playing ${video.title}`}>
       <div className="modal-backdrop" onClick={closePlayer} />
-      <div className="player-shell">
+      <div className={`player-shell ${isFullscreen ? 'fullscreen-mode' : ''}`}>
         <div className="player-topline">
           <h2>{video.title} <span>({video.folderPathLabel})</span></h2>
           <button className="close" onClick={closePlayer} aria-label="Close player">
@@ -624,7 +647,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
             autoPlay
             preload="metadata"
             playsInline
-            controlsList="nodownload noremoteplayback"
+            controlsList="nodownload nofullscreen noremoteplayback"
             disablePictureInPicture
             onPlay={() => setShowPlayPrompt(false)}
             onVolumeChange={(event) => {
@@ -643,13 +666,23 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
               <span>Play</span>
             </button>
           ) : null}
+          {isFullscreen ? (
+            <button className="fullscreen-exit-btn" onClick={toggleFullscreen} type="button">
+              Exit
+            </button>
+          ) : null}
         </div>
         <div className="player-footer">
           <span>
             🛡 Google Drive Approved Folder Stream · {playback.mode}
             {playbackStatus ? ` · ${playbackStatus}` : ''}
           </span>
-          <button className="player-close-btn" onClick={closePlayer} type="button">Back to library</button>
+          <div className="player-footer-actions">
+            <button className="player-close-btn" onClick={toggleFullscreen} type="button">
+              {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            </button>
+            <button className="player-close-btn" onClick={closePlayer} type="button">Back to library</button>
+          </div>
         </div>
       </div>
     </div>
@@ -777,13 +810,22 @@ function App() {
     });
   }
 
-  function markEnded(videoId) {
+  function playNextVideo(videoId) {
     setProgress((current) => {
       const next = { ...current };
       delete next[videoId];
       setJson(STORAGE_KEYS.progress, next);
       return next;
     });
+
+    const queue = filteredVideos.some((video) => video.id === videoId) ? filteredVideos : scopedVideos;
+    const currentIndex = queue.findIndex((video) => video.id === videoId);
+    if (currentIndex >= 0 && currentIndex < queue.length - 1) {
+      setSelectedVideo(queue[currentIndex + 1]);
+      return;
+    }
+
+    setSelectedVideo(null);
   }
 
   return (
@@ -793,6 +835,8 @@ function App() {
         setSearch={setSearch}
         parentUnlocked={parentUnlocked}
         setParentUnlocked={setParentUnlocked}
+        onRefresh={reload}
+        loading={loading}
       />
 
       <Sidebar
@@ -865,7 +909,7 @@ function App() {
       <PlayerModal
         video={selectedVideo}
         onClose={() => setSelectedVideo(null)}
-        onEnded={markEnded}
+        onEnded={playNextVideo}
         progress={progress}
         setProgress={setProgress}
       />

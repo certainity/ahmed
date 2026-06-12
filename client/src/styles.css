@@ -44,6 +44,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 button:focus-visible,
 input:focus-visible {
   outline: 2px solid var(--blue);
@@ -891,6 +896,40 @@ input:focus-visible {
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.9);
 }
 
+.player-shell.fullscreen-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  background-color: #000;
+}
+
+.player-shell.fullscreen-mode .player-topline,
+.player-shell.fullscreen-mode .player-footer {
+  display: none;
+}
+
+.player-shell.fullscreen-mode .player-video-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+}
+
+.player-shell.fullscreen-mode video {
+  width: 100vw;
+  height: 100dvh;
+  max-height: none;
+  aspect-ratio: auto;
+  background-color: #000;
+  object-fit: contain;
+}
+
 .player-topline {
   display: flex;
   align-items: center;
@@ -949,11 +988,29 @@ input:focus-visible {
   background-color: #000;
 }
 
+.player-video-wrap:fullscreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  background-color: #000;
+}
+
 .player-shell video {
   display: block;
   width: 100%;
   max-height: 75vh;
   aspect-ratio: 16 / 9;
+  background-color: #000;
+  object-fit: contain;
+}
+
+.player-video-wrap:fullscreen video {
+  width: 100vw;
+  height: 100vh;
+  max-height: none;
+  aspect-ratio: auto;
 }
 
 .player-play-overlay {
@@ -984,6 +1041,29 @@ input:focus-visible {
   font-size: 1.05rem;
 }
 
+.fullscreen-exit-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 4;
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background-color: rgba(18, 20, 26, 0.72);
+  color: #fff;
+  font-size: 0.86rem;
+  font-weight: 850;
+  opacity: 0.35;
+  transition: opacity 0.18s ease, background-color 0.18s ease;
+}
+
+.fullscreen-exit-btn:hover,
+.fullscreen-exit-btn:focus-visible {
+  background-color: rgba(18, 20, 26, 0.94);
+  opacity: 1;
+}
+
 .player-footer {
   justify-content: space-between;
   gap: 16px;
@@ -1006,6 +1086,12 @@ input:focus-visible {
 
 .player-close-btn:hover {
   background-color: rgba(255, 255, 255, 0.14);
+}
+
+.player-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .warning-list {
@@ -1243,6 +1329,11 @@ input:focus-visible {
 
   .player-close-btn {
     width: 100%;
+  }
+
+  .player-footer-actions {
+    width: 100%;
+    flex-direction: column;
   }
 
   .player-play-overlay {
