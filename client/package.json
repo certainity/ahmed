@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "hls.js": "^1.5.18",
     "react": "latest",
     "react-dom": "latest",
     "vite": "latest"

@@ -6,6 +6,7 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { google } from 'googleapis';
 import { Readable } from 'node:stream';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,10 +19,16 @@ if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 }
 
+const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
+if (!fs.existsSync(HLS_CACHE_DIR)) {
+  fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
+}
+
 const PORT = Number(process.env.PORT || 5174);
 const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '';
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STREAM_CHUNK_SIZE = Math.max(1024 * 1024, Number(process.env.STREAM_CHUNK_SIZE || 8 * 1024 * 1024));
+const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -75,6 +82,8 @@ let videoCache = {
   folderCount: 0,
   warnings: []
 };
+
+const hlsJobs = new Map();
 
 function ensureFolderConfigured() {
   if (!DRIVE_FOLDER_ID || DRIVE_FOLDER_ID.includes('PASTE_')) {
@@ -138,6 +147,7 @@ function normalizeVideo(file, folderContext) {
     folderPathLabel,
     depth: folderContext.depth || 0,
     streamUrl: `/api/stream/${file.id}`,
+    hlsUrl: `/api/hls/${file.id}/master.m3u8`,
     directPlayable: isBrowserNativeVideo(file),
     thumbnailUrl: `/api/thumbnails/${file.id}?v=${encodeURIComponent(file.modifiedTime || '')}`,
     _thumbnailLink: file.thumbnailLink || null
@@ -155,6 +165,97 @@ function isBrowserNativeVideo(file) {
 function publicVideo(video) {
   const { _thumbnailLink, ...safeVideo } = video;
   return safeVideo;
+}
+
+function getHlsPaths(videoId) {
+  const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const dir = path.join(HLS_CACHE_DIR, safeId);
+  return {
+    dir,
+    playlist: path.join(dir, 'master.m3u8'),
+    segmentPattern: path.join(dir, 'segment-%05d.ts')
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForFile(filePath, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) return true;
+    await sleep(500);
+  }
+  return fs.existsSync(filePath);
+}
+
+function ffmpegHeaderString(headers) {
+  return Object.entries(headers)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join('\r\n');
+}
+
+async function ensureHlsTranscode(video) {
+  const paths = getHlsPaths(video.id);
+  if (fs.existsSync(paths.playlist)) return paths;
+
+  const existingJob = hlsJobs.get(video.id);
+  if (existingJob) return existingJob.paths;
+
+  fs.mkdirSync(paths.dir, { recursive: true });
+
+  const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
+  const headers = await authHeadersFor(driveUrl);
+  const args = [
+    '-hide_banner',
+    '-loglevel', 'warning',
+    '-headers', ffmpegHeaderString(headers),
+    '-i', driveUrl,
+    '-map', '0:v:0',
+    '-map', '0:a:0?',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-ac', '2',
+    '-max_muxing_queue_size', '2048',
+    '-f', 'hls',
+    '-hls_time', '6',
+    '-hls_list_size', '0',
+    '-hls_flags', 'independent_segments',
+    '-hls_segment_filename', paths.segmentPattern,
+    paths.playlist
+  ];
+
+  const child = spawn(FFMPEG_PATH, args, {
+    windowsHide: true,
+    stdio: ['ignore', 'ignore', 'pipe']
+  });
+
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr += chunk.toString();
+    if (stderr.length > 8000) stderr = stderr.slice(-8000);
+  });
+
+  const job = { child, paths, stderr };
+  hlsJobs.set(video.id, job);
+
+  child.on('exit', (code) => {
+    hlsJobs.delete(video.id);
+    if (code !== 0 && !fs.existsSync(paths.playlist)) {
+      console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
+    }
+  });
+
+  child.on('error', (error) => {
+    hlsJobs.delete(video.id);
+    console.error(`Could not start ffmpeg for ${video.id}:`, error);
+  });
+
+  return paths;
 }
 
 async function listDriveChildren(parentFolderId) {
@@ -506,6 +607,62 @@ app.get('/api/stream/:id', async (req, res, next) => {
     const upstream = Readable.fromWeb(response.body);
     res.on('close', () => upstream.destroy());
     upstream.pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
+  try {
+    const video = await getAllowedVideo(req.params.id);
+    if (!video.canDownload) {
+      const err = new Error('This file cannot be transcoded from Google Drive.');
+      err.status = 403;
+      throw err;
+    }
+
+    const paths = await ensureHlsTranscode(video);
+    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 30000));
+    if (!ready) {
+      const err = new Error('Preparing playable audio stream. Try play again in a few seconds.');
+      err.status = 202;
+      throw err;
+    }
+
+    res.status(200).set({
+      'Content-Type': 'application/vnd.apple.mpegurl',
+      'Cache-Control': 'no-store'
+    });
+    fs.createReadStream(paths.playlist).pipe(res);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/hls/:id/:segment', async (req, res, next) => {
+  try {
+    await getAllowedVideo(req.params.id);
+    const segment = String(req.params.segment || '');
+    if (!/^segment-\d{5}\.ts$/.test(segment)) {
+      const err = new Error('Invalid HLS segment.');
+      err.status = 400;
+      throw err;
+    }
+
+    const paths = getHlsPaths(req.params.id);
+    const segmentPath = path.join(paths.dir, segment);
+    const ready = await waitForFile(segmentPath, Number(process.env.HLS_SEGMENT_TIMEOUT_MS || 15000));
+    if (!ready) {
+      const err = new Error('Video segment is not ready yet.');
+      err.status = 404;
+      throw err;
+    }
+
+    res.status(200).set({
+      'Content-Type': 'video/mp2t',
+      'Cache-Control': 'private, max-age=3600'
+    });
+    fs.createReadStream(segmentPath).pipe(res);
   } catch (error) {
     next(error);
   }
