@@ -9,6 +9,42 @@ const STORAGE_KEYS = {
   parentUnlocked: 'kids-drive-cinema:parent-unlocked'
 };
 
+const IS_MOVIE_SITE = typeof window !== 'undefined' && window.location.hostname.includes('drive-movies-cinema');
+const API_ORIGIN = IS_MOVIE_SITE ? 'https://kids-drive-cinema.onrender.com' : '';
+const API_LIBRARY = IS_MOVIE_SITE ? 'movie' : 'kids';
+const APP_COPY = IS_MOVIE_SITE
+  ? {
+      title: 'Drive Movies',
+      subtitle: 'Private cinema',
+      homeLabel: 'Drive Movies home',
+      searchPlaceholder: 'Search movies, collections, or folders...',
+      emptyTitle: 'No movies found'
+    }
+  : {
+      title: 'Kids Cinema',
+      subtitle: 'Safe Drive Player',
+      homeLabel: 'Kids Cinema home',
+      searchPlaceholder: 'Search cartoons, shows, or folders...',
+      emptyTitle: 'No videos found'
+    };
+
+function apiUrl(path) {
+  const url = new URL(path, API_ORIGIN || window.location.origin);
+  if (url.pathname.startsWith('/api/') && !url.searchParams.has('library')) {
+    url.searchParams.set('library', API_LIBRARY);
+  }
+  return API_ORIGIN ? url.href : `${url.pathname}${url.search}${url.hash}`;
+}
+
+function normalizeApiVideo(video) {
+  return {
+    ...video,
+    thumbnailUrl: apiUrl(video.thumbnailUrl),
+    streamUrl: apiUrl(video.streamUrl),
+    hlsUrl: video.hlsUrl ? apiUrl(video.hlsUrl) : video.hlsUrl
+  };
+}
+
 function getJson(key, fallback) {
   try {
     const value = localStorage.getItem(key);
@@ -147,10 +183,10 @@ function useVideos() {
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(`/api/videos${refresh ? '?refresh=1' : ''}`);
+      const response = await fetch(apiUrl(`/api/videos${refresh ? '?refresh=1' : ''}`));
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || payload.error || 'Could not load videos.');
-      setVideos(payload.videos || []);
+      setVideos((payload.videos || []).map(normalizeApiVideo));
       setLibrary(payload.library || { collections: [], warnings: [] });
       setRefreshedAt(payload.refreshedAt);
     } catch (err) {
@@ -188,7 +224,7 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
       <a
         className="brand"
         href="#top"
-        aria-label="Kids Cinema home"
+        aria-label={APP_COPY.homeLabel}
         onClick={(event) => {
           event.preventDefault();
           onHome();
@@ -196,8 +232,8 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
       >
         <span className="brand-logo" />
         <span>
-          <strong>Kids Cinema</strong>
-          <small>Safe Drive Player</small>
+          <strong>{APP_COPY.title}</strong>
+          <small>{APP_COPY.subtitle}</small>
         </span>
       </a>
 
@@ -206,7 +242,7 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search cartoons, shows, or folders..."
+            placeholder={APP_COPY.searchPlaceholder}
             aria-label="Search movies"
           />
         </label>
@@ -533,7 +569,7 @@ function VideoGrid({ videos, onPlay, favorites, onToggleFavorite, progress }) {
     return (
       <div className="empty-state">
         <span>🧸</span>
-        <h2>No videos found</h2>
+        <h2>{APP_COPY.emptyTitle}</h2>
         <p>Try matching another keyword, selecting another playlist sidebar item, or sync your Google Drive.</p>
       </div>
     );
@@ -892,6 +928,10 @@ function App() {
   const [favorites, setFavorites] = useState(() => getJson(STORAGE_KEYS.favorites, []));
   const [progress, setProgress] = useState(() => getJson(STORAGE_KEYS.progress, {}));
   const [parentUnlocked, setParentUnlocked] = useState(() => localStorage.getItem(STORAGE_KEYS.parentUnlocked) === 'yes');
+
+  useEffect(() => {
+    document.title = IS_MOVIE_SITE ? 'Drive Movies Cinema' : 'Kids Drive Cinema';
+  }, []);
 
   const collectionOptions = useMemo(() => {
     const counts = new Map();

@@ -25,11 +25,12 @@ if (!fs.existsSync(HLS_CACHE_DIR)) {
 }
 
 const PORT = Number(process.env.PORT || 5174);
-const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '';
+const KIDS_DRIVE_FOLDER_ID = process.env.KIDS_DRIVE_FOLDER_ID || process.env.GOOGLE_DRIVE_FOLDER_ID || '1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy';
+const MOVIE_DRIVE_FOLDER_ID = process.env.MOVIE_DRIVE_FOLDER_ID || '1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s';
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STREAM_CHUNK_SIZE = Math.max(1024 * 1024, Number(process.env.STREAM_CHUNK_SIZE || 8 * 1024 * 1024));
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
-const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
 const MAX_FOLDERS = Math.max(1, Number(process.env.MAX_FOLDERS || 750));
@@ -66,7 +67,7 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(morgan('tiny'));
-app.use(cors({
+const apiCors = cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
     if (CLIENT_ORIGIN === '*' || CLIENT_ORIGIN.split(',').map((s) => s.trim()).includes(origin)) {
@@ -74,23 +75,54 @@ app.use(cors({
     }
     return callback(new Error(`Origin not allowed by CORS: ${origin}`));
   }
-}));
+});
+app.use('/api', apiCors);
 
-let videoCache = {
-  fetchedAt: 0,
-  videos: [],
-  folderCount: 0,
-  warnings: []
+const libraryConfig = {
+  kids: { folderId: KIDS_DRIVE_FOLDER_ID },
+  movie: { folderId: MOVIE_DRIVE_FOLDER_ID }
 };
+
+const videoCaches = new Map();
 
 const hlsJobs = new Map();
 
-function ensureFolderConfigured() {
-  if (!DRIVE_FOLDER_ID || DRIVE_FOLDER_ID.includes('PASTE_')) {
-    const err = new Error('GOOGLE_DRIVE_FOLDER_ID is not configured. Copy server/.env.example to server/.env and set your Drive folder ID.');
+function emptyCache() {
+  return {
+    fetchedAt: 0,
+    videos: [],
+    folderCount: 0,
+    warnings: []
+  };
+}
+
+function getLibraryKey(req) {
+  return req.query.library === 'movie' || req.get('x-library') === 'movie' ? 'movie' : 'kids';
+}
+
+function getLibraryCache(libraryKey) {
+  if (!videoCaches.has(libraryKey)) {
+    videoCaches.set(libraryKey, emptyCache());
+  }
+  return videoCaches.get(libraryKey);
+}
+
+function setLibraryCache(libraryKey, cache) {
+  videoCaches.set(libraryKey, cache);
+}
+
+function getLibraryFolderId(libraryKey) {
+  return libraryConfig[libraryKey]?.folderId || libraryConfig.kids.folderId;
+}
+
+function ensureFolderConfigured(libraryKey) {
+  const folderId = getLibraryFolderId(libraryKey);
+  if (!folderId || folderId.includes('PASTE_')) {
+    const err = new Error(`${libraryKey} Google Drive folder ID is not configured.`);
     err.status = 500;
     throw err;
   }
+  return folderId;
 }
 
 function escapeDriveQueryValue(value) {
@@ -122,7 +154,7 @@ function compareVideos(a, b) {
   return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
 }
 
-function normalizeVideo(file, folderContext) {
+function normalizeVideo(file, folderContext, libraryKey) {
   const durationMs = toNumber(file.videoMediaMetadata?.durationMillis);
   const width = toNumber(file.videoMediaMetadata?.width);
   const height = toNumber(file.videoMediaMetadata?.height);
@@ -146,10 +178,10 @@ function normalizeVideo(file, folderContext) {
     folderPath: pathSegments,
     folderPathLabel,
     depth: folderContext.depth || 0,
-    streamUrl: `/api/stream/${file.id}`,
-    hlsUrl: `/api/hls/${file.id}/master.m3u8`,
+    streamUrl: `/api/stream/${file.id}?library=${libraryKey}`,
+    hlsUrl: `/api/hls/${file.id}/master.m3u8?library=${libraryKey}`,
     directPlayable: isBrowserNativeVideo(file),
-    thumbnailUrl: `/api/thumbnails/${file.id}?v=${encodeURIComponent(file.modifiedTime || '')}`,
+    thumbnailUrl: `/api/thumbnails/${file.id}?library=${libraryKey}&v=${encodeURIComponent(file.modifiedTime || '')}`,
     _thumbnailLink: file.thumbnailLink || null
   };
 }
@@ -167,9 +199,10 @@ function publicVideo(video) {
   return safeVideo;
 }
 
-function getHlsPaths(videoId) {
+function getHlsPaths(libraryKey, videoId) {
   const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
-  const dir = path.join(HLS_CACHE_DIR, safeId);
+  const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
+  const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${safeId}`);
   return {
     dir,
     playlist: path.join(dir, 'master.m3u8'),
@@ -196,11 +229,12 @@ function ffmpegHeaderString(headers) {
     .join('\r\n');
 }
 
-async function ensureHlsTranscode(video) {
-  const paths = getHlsPaths(video.id);
+async function ensureHlsTranscode(libraryKey, video) {
+  const paths = getHlsPaths(libraryKey, video.id);
   if (fs.existsSync(paths.playlist)) return paths;
 
-  const existingJob = hlsJobs.get(video.id);
+  const jobKey = `${libraryKey}:${video.id}`;
+  const existingJob = hlsJobs.get(jobKey);
   if (existingJob) return existingJob.paths;
 
   fs.mkdirSync(paths.dir, { recursive: true });
@@ -239,17 +273,17 @@ async function ensureHlsTranscode(video) {
   });
 
   const job = { child, paths, stderr };
-  hlsJobs.set(video.id, job);
+  hlsJobs.set(jobKey, job);
 
   child.on('exit', (code) => {
-    hlsJobs.delete(video.id);
+    hlsJobs.delete(jobKey);
     if (code !== 0 && !fs.existsSync(paths.playlist)) {
       console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
     }
   });
 
   child.on('error', (error) => {
-    hlsJobs.delete(video.id);
+    hlsJobs.delete(jobKey);
     console.error(`Could not start ffmpeg for ${video.id}:`, error);
   });
 
@@ -281,10 +315,10 @@ async function listDriveChildren(parentFolderId) {
   return children;
 }
 
-async function scanApprovedFolderTree() {
-  ensureFolderConfigured();
+async function scanApprovedFolderTree(libraryKey) {
+  const folderId = ensureFolderConfigured(libraryKey);
 
-  const queue = [{ id: DRIVE_FOLDER_ID, path: [], depth: 0 }];
+  const queue = [{ id: folderId, path: [], depth: 0 }];
   const visitedFolders = new Set();
   const videos = [];
   const warnings = [];
@@ -323,7 +357,7 @@ async function scanApprovedFolderTree() {
       }
 
       if (isVideoFile(child)) {
-        videos.push(normalizeVideo(child, folderContext));
+        videos.push(normalizeVideo(child, folderContext, libraryKey));
       }
     }
   }
@@ -332,26 +366,27 @@ async function scanApprovedFolderTree() {
   return { videos, folderCount, warnings };
 }
 
-async function listVideos({ force = false } = {}) {
-  ensureFolderConfigured();
+async function listVideos({ force = false, libraryKey = 'kids' } = {}) {
+  ensureFolderConfigured(libraryKey);
 
+  const videoCache = getLibraryCache(libraryKey);
   const cacheIsFresh = Date.now() - videoCache.fetchedAt < CACHE_TTL_MS;
   if (!force && cacheIsFresh) {
     return videoCache.videos;
   }
 
-  const scanResult = await scanApprovedFolderTree();
-  videoCache = {
+  const scanResult = await scanApprovedFolderTree(libraryKey);
+  setLibraryCache(libraryKey, {
     fetchedAt: Date.now(),
     videos: scanResult.videos,
     folderCount: scanResult.folderCount,
     warnings: scanResult.warnings
-  };
+  });
 
-  return videoCache.videos;
+  return getLibraryCache(libraryKey).videos;
 }
 
-async function getAllowedVideo(fileId) {
+async function getAllowedVideo(fileId, libraryKey = 'kids') {
   const id = String(fileId || '').trim();
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
     const err = new Error('Invalid video ID.');
@@ -359,12 +394,12 @@ async function getAllowedVideo(fileId) {
     throw err;
   }
 
-  let videos = await listVideos();
+  let videos = await listVideos({ libraryKey });
   let video = videos.find((item) => item.id === id);
 
   // Refresh once in case the parent has just added a new Drive file.
   if (!video) {
-    videos = await listVideos({ force: true });
+    videos = await listVideos({ force: true, libraryKey });
     video = videos.find((item) => item.id === id);
   }
 
@@ -463,18 +498,24 @@ function sendPlaceholderThumbnail(res, title = 'Movie') {
 app.get('/health', (_req, res) => {
   res.json({
     ok: true,
-    folderConfigured: Boolean(DRIVE_FOLDER_ID && !DRIVE_FOLDER_ID.includes('PASTE_')),
+    folderConfigured: Boolean(KIDS_DRIVE_FOLDER_ID && !KIDS_DRIVE_FOLDER_ID.includes('PASTE_')),
+    libraries: {
+      kids: Boolean(KIDS_DRIVE_FOLDER_ID && !KIDS_DRIVE_FOLDER_ID.includes('PASTE_')),
+      movie: Boolean(MOVIE_DRIVE_FOLDER_ID && !MOVIE_DRIVE_FOLDER_ID.includes('PASTE_'))
+    },
     includeSubfolders: INCLUDE_SUBFOLDERS,
     maxScanDepth: MAX_SCAN_DEPTH,
-    cacheAgeMs: videoCache.fetchedAt ? Date.now() - videoCache.fetchedAt : null
+    cacheAgeMs: getLibraryCache('kids').fetchedAt ? Date.now() - getLibraryCache('kids').fetchedAt : null
   });
 });
 
 app.get('/api/videos', async (req, res, next) => {
   try {
+    const libraryKey = getLibraryKey(req);
     const force = req.query.refresh === '1';
     const query = String(req.query.q || '').trim().toLowerCase();
-    let videos = await listVideos({ force });
+    let videos = await listVideos({ force, libraryKey });
+    const videoCache = getLibraryCache(libraryKey);
 
     if (query) {
       videos = videos.filter((video) =>
@@ -491,7 +532,8 @@ app.get('/api/videos', async (req, res, next) => {
       count: videos.length,
       refreshedAt: new Date(videoCache.fetchedAt).toISOString(),
       library: {
-        configuredFolderId: DRIVE_FOLDER_ID,
+        key: libraryKey,
+        configuredFolderId: getLibraryFolderId(libraryKey),
         includeSubfolders: INCLUDE_SUBFOLDERS,
         maxScanDepth: MAX_SCAN_DEPTH,
         folderCount: videoCache.folderCount,
@@ -507,7 +549,8 @@ app.get('/api/videos', async (req, res, next) => {
 
 app.get('/api/thumbnails/:id', async (req, res, next) => {
   try {
-    const video = await getAllowedVideo(req.params.id);
+    const libraryKey = getLibraryKey(req);
+    const video = await getAllowedVideo(req.params.id, libraryKey);
     const cachePath = path.join(CACHE_DIR, `${video.id}.jpg`);
 
     // 1. Check if cached thumbnail exists
@@ -555,7 +598,8 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
 
 app.get('/api/stream/:id', async (req, res, next) => {
   try {
-    const video = await getAllowedVideo(req.params.id);
+    const libraryKey = getLibraryKey(req);
+    const video = await getAllowedVideo(req.params.id, libraryKey);
     const fileSize = Number(video.size || 0);
 
     if (!video.canDownload) {
@@ -612,14 +656,15 @@ app.get('/api/stream/:id', async (req, res, next) => {
 
 app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
   try {
-    const video = await getAllowedVideo(req.params.id);
+    const libraryKey = getLibraryKey(req);
+    const video = await getAllowedVideo(req.params.id, libraryKey);
     if (!video.canDownload) {
       const err = new Error('This file cannot be transcoded from Google Drive.');
       err.status = 403;
       throw err;
     }
 
-    const paths = await ensureHlsTranscode(video);
+    const paths = await ensureHlsTranscode(libraryKey, video);
     const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 25000));
     if (!ready) {
       res.status(202).json({
@@ -629,11 +674,13 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       return;
     }
 
+    const playlist = fs.readFileSync(paths.playlist, 'utf8')
+      .replace(/(segment-\d{5}\.ts)(?!\?)/g, `$1?library=${libraryKey}`);
+
     res.status(200).set({
       'Content-Type': 'application/vnd.apple.mpegurl',
       'Cache-Control': 'no-store'
-    });
-    fs.createReadStream(paths.playlist).pipe(res);
+    }).send(playlist);
   } catch (error) {
     next(error);
   }
@@ -641,7 +688,8 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
 
 app.get('/api/hls/:id/:segment', async (req, res, next) => {
   try {
-    await getAllowedVideo(req.params.id);
+    const libraryKey = getLibraryKey(req);
+    await getAllowedVideo(req.params.id, libraryKey);
     const segment = String(req.params.segment || '');
     if (!/^segment-\d{5}\.ts$/.test(segment)) {
       const err = new Error('Invalid HLS segment.');
@@ -649,7 +697,7 @@ app.get('/api/hls/:id/:segment', async (req, res, next) => {
       throw err;
     }
 
-    const paths = getHlsPaths(req.params.id);
+    const paths = getHlsPaths(libraryKey, req.params.id);
     const segmentPath = path.join(paths.dir, segment);
     const ready = await waitForFile(segmentPath, Number(process.env.HLS_SEGMENT_TIMEOUT_MS || 15000));
     if (!ready) {
