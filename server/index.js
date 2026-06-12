@@ -62,7 +62,7 @@ const drive = google.drive({ version: 'v3', auth });
 const app = express();
 app.disable('x-powered-by');
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'same-site' },
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
   contentSecurityPolicy: false
 }));
 app.use(compression());
