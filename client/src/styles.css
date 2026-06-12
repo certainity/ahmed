@@ -708,23 +708,6 @@ input:focus-visible {
   text-transform: uppercase;
 }
 
-.thumbnail-title {
-  position: absolute;
-  right: 52px;
-  bottom: 8px;
-  left: 8px;
-  z-index: 4;
-  overflow: hidden;
-  color: #fff;
-  font-size: 0.78rem;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: left;
-  text-overflow: ellipsis;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
-  white-space: nowrap;
-}
-
 .progress-line {
   position: absolute;
   bottom: 0;
@@ -780,30 +763,14 @@ input:focus-visible {
   font-size: 0.85rem;
 }
 
-.video-channel,
-.video-stats,
-.video-path {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.video-channel {
-  display: block;
-}
-
 .video-stats {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-top: 2px;
-}
-
-.video-path {
-  display: block;
-  margin-top: 2px;
-  color: #868d9c;
-  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .favorite-btn-container {
@@ -866,6 +833,44 @@ input:focus-visible {
   to {
     transform: rotate(360deg);
   }
+}
+
+.watch-page {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+.watch-player {
+  width: 100%;
+}
+
+.watch-player .player-shell {
+  width: 100%;
+}
+
+.watch-recommendations {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.watch-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.watch-heading h2 {
+  font-size: 1.32rem;
+  line-height: 1.1;
+}
+
+.watch-heading span {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 800;
 }
 
 .modal {
@@ -1086,6 +1091,11 @@ input:focus-visible {
 
 .player-close-btn:hover {
   background-color: rgba(255, 255, 255, 0.14);
+}
+
+.player-close-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .player-footer-actions {

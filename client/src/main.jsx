@@ -80,11 +80,49 @@ function getThumbnailStyle(video) {
   };
 }
 
+function getShuffleRank(video) {
+  return hashString(`${video.id}:${video.title}:${video.folderPathLabel}`);
+}
+
 function getPlaybackSource(video) {
   return {
     src: video.streamUrl,
     mode: video.directPlayable ? 'Direct browser playback' : 'Direct Drive stream',
     type: video.mimeType || 'video/mp4'
+  };
+}
+
+function getFolderEpisodeQueue(currentVideo, videos) {
+  if (!currentVideo) return [];
+  return videos
+    .filter((video) => video.folderPathLabel === currentVideo.folderPathLabel)
+    .sort((a, b) => a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' }));
+}
+
+function getRecommendedQueue(currentVideo, videos) {
+  const folderQueue = getFolderEpisodeQueue(currentVideo, videos);
+  const currentIndex = folderQueue.findIndex((video) => video.id === currentVideo?.id);
+  if (currentIndex < 0) return folderQueue.filter((video) => video.id !== currentVideo?.id);
+  return [
+    ...folderQueue.slice(currentIndex + 1),
+    ...folderQueue.slice(0, currentIndex)
+  ];
+}
+
+function getAdjacentFolderVideos(currentVideo, videos) {
+  const folderQueue = getFolderEpisodeQueue(currentVideo, videos);
+  if (!currentVideo || folderQueue.length <= 1) {
+    return { previousVideo: null, nextVideo: null };
+  }
+
+  const currentIndex = folderQueue.findIndex((video) => video.id === currentVideo.id);
+  if (currentIndex < 0) {
+    return { previousVideo: null, nextVideo: folderQueue[0] || null };
+  }
+
+  return {
+    previousVideo: folderQueue[(currentIndex - 1 + folderQueue.length) % folderQueue.length],
+    nextVideo: folderQueue[(currentIndex + 1) % folderQueue.length]
   };
 }
 
@@ -119,7 +157,7 @@ function useVideos() {
   return { videos, library, loading, error, refreshedAt, reload: load };
 }
 
-function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefresh, loading }) {
+function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefresh, loading, onHome }) {
   const [pin, setPin] = useState('');
   const expectedPin = import.meta.env.VITE_PARENT_PIN || '2468';
 
@@ -137,7 +175,15 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
 
   return (
     <header className="topbar">
-      <a className="brand" href="#top" aria-label="Kids Cinema home">
+      <a
+        className="brand"
+        href="#top"
+        aria-label="Kids Cinema home"
+        onClick={(event) => {
+          event.preventDefault();
+          onHome();
+        }}
+      >
         <span className="brand-logo" />
         <span>
           <strong>Kids Cinema</strong>
@@ -206,7 +252,9 @@ function Sidebar({ filter, setFilter, collection, setCollection, collectionOptio
     <aside className="sidebar">
       {mainFilters.map((item) => {
         const countValue = counts[item.key] || 0;
-        const isActive = filter === item.key;
+        const isActive = item.key === 'all'
+          ? filter === 'all' && collection === 'all'
+          : filter === item.key;
         return (
           <button
             key={item.key}
@@ -440,7 +488,6 @@ function VideoCard({ video, onPlay, favorite, onToggleFavorite, progress }) {
         <img src={video.thumbnailUrl} alt="" loading="lazy" />
         <span className="thumbnail-vignette" aria-hidden="true" />
         <span className="episode-chip">{episodeLabel}</span>
-        <span className="thumbnail-title">{video.title}</span>
         <span className="duration-chip">{formatDuration(video.durationMs)}</span>
         {progressPercent > 2 ? <span className="progress-line" style={{ width: `${progressPercent}%` }} /> : null}
       </button>
@@ -451,16 +498,10 @@ function VideoCard({ video, onPlay, favorite, onToggleFavorite, progress }) {
         <div className="video-info">
           <h3>{video.title}</h3>
           <div className="video-metadata-row">
-            <span className="video-channel" title={video.collection}>{video.collection}</span>
             <div className="video-stats">
               <span>{video.isHd ? '1080p HD' : 'SD'}</span>
               {video.size ? <span>• {formatSize(video.size)}</span> : null}
             </div>
-            {video.folderPathLabel ? (
-              <span className="video-path" title={video.folderPathLabel}>
-                {video.folderPathLabel}
-              </span>
-            ) : null}
           </div>
         </div>
         <div className="favorite-btn-container">
@@ -504,7 +545,17 @@ function VideoGrid({ videos, onPlay, favorites, onToggleFavorite, progress }) {
   );
 }
 
-function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
+function WatchPlayer({
+  video,
+  onClose,
+  onEnded,
+  onPrevious,
+  onNext,
+  previousVideo,
+  nextVideo,
+  progress,
+  setProgress
+}) {
   const playerRef = useRef(null);
   const shellRef = useRef(null);
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
@@ -512,31 +563,18 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  function tryStartPlayback({ mutedFallback = false, forceUnmute = false } = {}) {
+  function tryStartPlayback() {
     const player = playerRef.current;
     if (!player) return;
 
-    if (forceUnmute) {
-      player.muted = false;
-    }
+    player.muted = false;
+    player.volume = 1;
 
     player.play().then(() => {
       setShowPlayPrompt(false);
-      setPlaybackStatus(player.muted ? 'Playing muted - use the volume button to unmute.' : '');
+      setPlaybackStatus('');
     }).catch(() => {
-      if (mutedFallback) {
-        player.muted = true;
-        player.play().then(() => {
-          setShowPlayPrompt(false);
-          setPlaybackStatus('Playing muted - use the volume button to unmute.');
-        }).catch(() => {
-          setPlaybackStatus('Tap play to start stream.');
-          setShowPlayPrompt(true);
-        });
-        return;
-      }
-
-      setPlaybackStatus('Tap play to start stream.');
+      setPlaybackStatus('Tap play to start with audio.');
       setShowPlayPrompt(true);
     });
   }
@@ -560,7 +598,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     if (document.fullscreenElement) {
       await document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
-      window.setTimeout(() => tryStartPlayback({ mutedFallback: true }), 80);
+      window.setTimeout(() => tryStartPlayback(), 80);
       return;
     }
 
@@ -570,7 +608,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
       await shell.requestFullscreen({ navigationUI: 'hide' }).catch(() => {});
     }
 
-    window.setTimeout(() => tryStartPlayback({ mutedFallback: true }), 80);
+    window.setTimeout(() => tryStartPlayback(), 80);
   }
 
   useEffect(() => {
@@ -585,15 +623,6 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isFullscreen, onClose]);
-
-  useEffect(() => {
-    if (!video) return undefined;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [video]);
 
   useEffect(() => {
     function onFullscreenChange() {
@@ -611,9 +640,11 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     setPlaybackStatus('');
     setShowPlayPrompt(false);
 
+    player.muted = false;
+    player.volume = 1;
     player.src = playback.src;
     player.load();
-    tryStartPlayback({ mutedFallback: true });
+    tryStartPlayback();
     return undefined;
   }, [video, playback]);
 
@@ -633,7 +664,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   if (!video) return null;
 
   function startPlayback() {
-    tryStartPlayback({ mutedFallback: true, forceUnmute: true });
+    tryStartPlayback();
   }
 
   function rememberProgress() {
@@ -654,8 +685,7 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   }
 
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label={`Playing ${video.title}`}>
-      <div className="modal-backdrop" onClick={closePlayer} />
+    <section className="watch-player" aria-label={`Playing ${video.title}`}>
       <div ref={shellRef} className={`player-shell ${isFullscreen ? 'fullscreen-mode' : ''}`}>
         <div className="player-topline">
           <h2>{video.title} <span>({video.folderPathLabel})</span></h2>
@@ -706,11 +736,84 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
             <button className="player-close-btn" onClick={toggleFullscreen} type="button">
               {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             </button>
-            <button className="player-close-btn" onClick={closePlayer} type="button">Back to library</button>
+            <button
+              className="player-close-btn"
+              onClick={onPrevious}
+              type="button"
+              disabled={!previousVideo}
+              title={previousVideo ? previousVideo.title : 'No previous video'}
+            >
+              Previous
+            </button>
+            <button
+              className="player-close-btn"
+              onClick={onNext}
+              type="button"
+              disabled={!nextVideo}
+              title={nextVideo ? nextVideo.title : 'No next video'}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
+  );
+}
+
+function WatchPage({
+  video,
+  recommendations,
+  previousVideo,
+  nextVideo,
+  onBack,
+  onSelectVideo,
+  onEnded,
+  onPrevious,
+  onNext,
+  progress,
+  setProgress,
+  favorites,
+  onToggleFavorite
+}) {
+  return (
+    <section className="watch-page">
+      <WatchPlayer
+        video={video}
+        onClose={onBack}
+        onEnded={onEnded}
+        onPrevious={onPrevious}
+        onNext={onNext}
+        previousVideo={previousVideo}
+        nextVideo={nextVideo}
+        progress={progress}
+        setProgress={setProgress}
+      />
+
+      <section className="watch-recommendations" aria-label="Recommended videos">
+        <div className="watch-heading">
+          <div>
+            <p className="section-kicker">Up next from this folder</p>
+            <h2>Recommended videos</h2>
+          </div>
+          <span>{recommendations.length} queued</span>
+        </div>
+        {recommendations.length ? (
+          <VideoGrid
+            videos={recommendations}
+            onPlay={onSelectVideo}
+            favorites={favorites}
+            onToggleFavorite={onToggleFavorite}
+            progress={progress}
+          />
+        ) : (
+          <div className="empty-state">
+            <h2>No more videos in this folder</h2>
+            <p>Go back to the library to pick another collection.</p>
+          </div>
+        )}
+      </section>
+    </section>
   );
 }
 
@@ -813,9 +916,12 @@ function App() {
         if (sortBy === 'longest') return (b.durationMs || 0) - (a.durationMs || 0);
         if (sortBy === 'shortest') return (a.durationMs || Number.MAX_SAFE_INTEGER) - (b.durationMs || Number.MAX_SAFE_INTEGER);
         if (sortBy === 'largest') return (b.size || 0) - (a.size || 0);
+        if (collection === 'all') {
+          return getShuffleRank(a) - getShuffleRank(b);
+        }
         return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedVideos, search, filter, qualityFilter, durationFilter, sortBy, favorites, progress]);
+  }, [scopedVideos, search, filter, qualityFilter, durationFilter, sortBy, collection, favorites, progress]);
 
   const counts = useMemo(() => ({
     all: scopedVideos.length,
@@ -824,6 +930,75 @@ function App() {
     short: scopedVideos.filter((video) => video.durationMs && video.durationMs <= 20 * 60 * 1000).length,
     hd: scopedVideos.filter((video) => video.isHd).length
   }), [scopedVideos, favorites, progress]);
+
+  const sidebarCounts = useMemo(() => ({
+    all: videos.length,
+    favorites: videos.filter((video) => favorites.includes(video.id)).length,
+    continue: videos.filter((video) => getProgressPercent(video, progress) > 5).length,
+    short: videos.filter((video) => video.durationMs && video.durationMs <= 20 * 60 * 1000).length,
+    hd: videos.filter((video) => video.isHd).length
+  }), [videos, favorites, progress]);
+
+  const recommendedVideos = useMemo(
+    () => getRecommendedQueue(selectedVideo, videos),
+    [selectedVideo, videos]
+  );
+
+  const watchNavigation = useMemo(
+    () => getAdjacentFolderVideos(selectedVideo, videos),
+    [selectedVideo, videos]
+  );
+
+  function leaveWatchPage() {
+    setSelectedVideo(null);
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    }
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+
+  function showLibraryHome() {
+    setSearch('');
+    setFilter('all');
+    setCollection('all');
+    leaveWatchPage();
+  }
+
+  function updateSearch(value) {
+    setSearch(value);
+    if (selectedVideo) {
+      leaveWatchPage();
+    }
+  }
+
+  function updateFilter(nextFilter) {
+    setSearch('');
+    setFilter(nextFilter);
+    leaveWatchPage();
+  }
+
+  function updateCollection(nextCollection) {
+    setSearch('');
+    setCollection(nextCollection);
+    leaveWatchPage();
+  }
+
+  function openVideo(video) {
+    setSelectedVideo(video);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+
+  function playPreviousVideo() {
+    if (!watchNavigation.previousVideo) return;
+    setSelectedVideo(watchNavigation.previousVideo);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
+
+  function playNextFromButton() {
+    if (!watchNavigation.nextVideo) return;
+    setSelectedVideo(watchNavigation.nextVideo);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
+  }
 
   function toggleFavorite(videoId) {
     setFavorites((current) => {
@@ -843,10 +1018,9 @@ function App() {
       return next;
     });
 
-    const queue = filteredVideos.some((video) => video.id === videoId) ? filteredVideos : scopedVideos;
-    const currentIndex = queue.findIndex((video) => video.id === videoId);
-    if (currentIndex >= 0 && currentIndex < queue.length - 1) {
-      setSelectedVideo(queue[currentIndex + 1]);
+    const nextVideo = getRecommendedQueue(selectedVideo || videos.find((video) => video.id === videoId), videos)[0];
+    if (nextVideo) {
+      setSelectedVideo(nextVideo);
       return;
     }
 
@@ -857,20 +1031,21 @@ function App() {
     <div className="app-container">
       <Header
         search={search}
-        setSearch={setSearch}
+        setSearch={updateSearch}
         parentUnlocked={parentUnlocked}
         setParentUnlocked={setParentUnlocked}
         onRefresh={reload}
         loading={loading}
+        onHome={showLibraryHome}
       />
 
       <Sidebar
         filter={filter}
-        setFilter={setFilter}
+        setFilter={updateFilter}
         collection={collection}
-        setCollection={setCollection}
+        setCollection={updateCollection}
         collectionOptions={collectionOptions}
-        counts={counts}
+        counts={sidebarCounts}
       />
 
       <main className="main-content">
@@ -891,53 +1066,65 @@ function App() {
           </section>
         ) : (
           <>
-            <Hero featured={featured} onPlay={setSelectedVideo} total={scopedVideos.length} />
-
-            <LibraryToolbar
-              filter={filter}
-              setFilter={setFilter}
-              collection={collection}
-              setCollection={setCollection}
-              collectionOptions={collectionOptions}
-              qualityFilter={qualityFilter}
-              setQualityFilter={setQualityFilter}
-              durationFilter={durationFilter}
-              setDurationFilter={setDurationFilter}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              counts={counts}
-              visibleCount={filteredVideos.length}
-              search={search}
-              setSearch={setSearch}
-            />
-            
-            {parentUnlocked ? (
-              <ParentPanel
-                reload={reload}
-                refreshedAt={refreshedAt}
-                videos={videos}
-                library={library}
+            {selectedVideo ? (
+              <WatchPage
+                video={selectedVideo}
+                recommendations={recommendedVideos}
+                previousVideo={watchNavigation.previousVideo}
+                nextVideo={watchNavigation.nextVideo}
+                onBack={() => setSelectedVideo(null)}
+                onSelectVideo={openVideo}
+                onEnded={playNextVideo}
+                onPrevious={playPreviousVideo}
+                onNext={playNextFromButton}
+                progress={progress}
+                setProgress={setProgress}
+                favorites={favorites}
+                onToggleFavorite={toggleFavorite}
               />
-            ) : null}
+            ) : (
+              <>
+                <Hero featured={featured} onPlay={openVideo} total={scopedVideos.length} />
 
-            <VideoGrid
-              videos={filteredVideos}
-              onPlay={setSelectedVideo}
-              favorites={favorites}
-              onToggleFavorite={toggleFavorite}
-              progress={progress}
-            />
+                <LibraryToolbar
+                  filter={filter}
+                  setFilter={updateFilter}
+                  collection={collection}
+                  setCollection={updateCollection}
+                  collectionOptions={collectionOptions}
+                  qualityFilter={qualityFilter}
+                  setQualityFilter={setQualityFilter}
+                  durationFilter={durationFilter}
+                  setDurationFilter={setDurationFilter}
+                  sortBy={sortBy}
+                  setSortBy={setSortBy}
+                  counts={counts}
+                  visibleCount={filteredVideos.length}
+                  search={search}
+                  setSearch={updateSearch}
+                />
+                
+                {parentUnlocked ? (
+                  <ParentPanel
+                    reload={reload}
+                    refreshedAt={refreshedAt}
+                    videos={videos}
+                    library={library}
+                  />
+                ) : null}
+
+                <VideoGrid
+                  videos={filteredVideos}
+                  onPlay={openVideo}
+                  favorites={favorites}
+                  onToggleFavorite={toggleFavorite}
+                  progress={progress}
+                />
+              </>
+            )}
           </>
         )}
       </main>
-
-      <PlayerModal
-        video={selectedVideo}
-        onClose={() => setSelectedVideo(null)}
-        onEnded={playNextVideo}
-        progress={progress}
-        setProgress={setProgress}
-      />
     </div>
   );
 }
