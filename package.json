@@ -1,8 +1,8 @@
 {
-  "name": "drive-movies-cinema",
+  "name": "kids-drive-cinema",
   "private": true,
   "version": "1.0.0",
-  "description": "A private movie-streaming React app that lists and streams videos from one approved Google Drive folder tree.",
+  "description": "A kid-friendly YouTube-style React movie app that streams only videos from one approved Google Drive folder tree.",
   "workspaces": [
     "server",
     "client"

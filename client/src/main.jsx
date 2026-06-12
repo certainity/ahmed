@@ -3,9 +3,9 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 
 const STORAGE_KEYS = {
-  favorites: 'drive-movies-cinema:favorites',
-  progress: 'drive-movies-cinema:progress',
-  parentUnlocked: 'drive-movies-cinema:parent-unlocked'
+  favorites: 'kids-drive-cinema:favorites',
+  progress: 'kids-drive-cinema:progress',
+  parentUnlocked: 'kids-drive-cinema:parent-unlocked'
 };
 
 function getJson(key, fallback) {
@@ -178,7 +178,7 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
       <a
         className="brand"
         href="#top"
-        aria-label="Drive Movies home"
+        aria-label="Kids Cinema home"
         onClick={(event) => {
           event.preventDefault();
           onHome();
@@ -186,8 +186,8 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
       >
         <span className="brand-logo" />
         <span>
-          <strong>Drive Movies</strong>
-          <small>Private cinema</small>
+          <strong>Kids Cinema</strong>
+          <small>Safe Drive Player</small>
         </span>
       </a>
 
@@ -196,11 +196,11 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search movies, collections, or folders..."
+            placeholder="Search cartoons, shows, or folders..."
             aria-label="Search movies"
           />
         </label>
-        <button className="search-button" aria-label="Search button">Search</button>
+        <button className="search-button" aria-label="Search button">🔍</button>
       </div>
 
       <div className="header-actions">
@@ -220,7 +220,7 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
               localStorage.removeItem(STORAGE_KEYS.parentUnlocked);
             }}
           >
-            Lock Parent
+            🔒 Lock Parent
           </button>
         ) : (
           <form className="pin-form" onSubmit={unlockParentMode}>
@@ -241,11 +241,11 @@ function Header({ search, setSearch, parentUnlocked, setParentUnlocked, onRefres
 
 function Sidebar({ filter, setFilter, collection, setCollection, collectionOptions, counts }) {
   const mainFilters = [
-    { key: 'all', label: 'Home', icon: 'H' },
-    { key: 'continue', label: 'Continue', icon: 'P' },
-    { key: 'favorites', label: 'Favorites', icon: 'F' },
-    { key: 'short', label: 'Short Movies', icon: 'S' },
-    { key: 'hd', label: 'HD Movies', icon: 'HD' }
+    { key: 'all', label: 'Home', icon: '🏠' },
+    { key: 'continue', label: 'History', icon: '⏳' },
+    { key: 'favorites', label: 'Liked Videos', icon: '👍' },
+    { key: 'short', label: 'Shorts', icon: '⚡' },
+    { key: 'hd', label: 'HD Shows', icon: '✨' }
   ];
 
   return (
@@ -273,7 +273,7 @@ function Sidebar({ filter, setFilter, collection, setCollection, collectionOptio
       {collectionOptions.length > 1 && (
         <>
           <div className="sidebar-divider" />
-          <div className="sidebar-section-title">Collections</div>
+          <div className="sidebar-section-title">Subscriptions</div>
           {collectionOptions.map((opt) => {
             const isCollActive = collection === opt.key;
             const labelInit = opt.label.charAt(0);
@@ -287,7 +287,7 @@ function Sidebar({ filter, setFilter, collection, setCollection, collectionOptio
                 }}
                 title={opt.label}
               >
-                <span className="icon">C</span>
+                <span className="icon">📁</span>
                 <span style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
                   {opt.label}
                 </span>
@@ -307,10 +307,10 @@ function Hero({ featured, onPlay, total }) {
     <section className="hero" id="top">
       <div className="hero-poster" onClick={() => onPlay(featured)}>
         <img src={featured.thumbnailUrl} alt={featured.title} />
-        <span className="big-play">Play</span>
+        <span className="big-play">▶</span>
       </div>
       <div className="hero-copy">
-        <div className="eyebrow">Featured from Drive</div>
+        <div className="eyebrow">🔥 Recommended for You</div>
         <h1>{featured.title}</h1>
         <p>
           {featured.folderPathLabel ? `From Collection: ${featured.folderPathLabel}` : 'Private cinema video from your shared Google Drive folder.'}
@@ -321,9 +321,9 @@ function Hero({ featured, onPlay, total }) {
           {featured.size ? <span>{formatSize(featured.size)}</span> : null}
         </div>
         <div className="hero-actions">
-          <button className="pill-btn primary" onClick={() => onPlay(featured)}>Play Movie</button>
-          {featured.durationMs ? <span className="pill-btn">{formatDuration(featured.durationMs)}</span> : null}
-          {featured.isHd ? <span className="pill-btn">HD</span> : null}
+          <button className="pill-btn primary" onClick={() => onPlay(featured)}>▶ Play Video</button>
+          {featured.durationMs ? <span className="pill-btn">⏱ {formatDuration(featured.durationMs)}</span> : null}
+          {featured.isHd ? <span className="pill-btn">✨ HD</span> : null}
         </div>
       </div>
     </section>
@@ -500,7 +500,7 @@ function VideoCard({ video, onPlay, favorite, onToggleFavorite, progress }) {
           <div className="video-metadata-row">
             <div className="video-stats">
               <span>{video.isHd ? '1080p HD' : 'SD'}</span>
-              {video.size ? <span> - {formatSize(video.size)}</span> : null}
+              {video.size ? <span>• {formatSize(video.size)}</span> : null}
             </div>
           </div>
         </div>
@@ -510,7 +510,7 @@ function VideoCard({ video, onPlay, favorite, onToggleFavorite, progress }) {
             aria-label={favorite ? 'Remove from Favorites' : 'Add to Favorites'}
             onClick={() => onToggleFavorite(video.id)}
           >
-            *
+            ★
           </button>
         </div>
       </div>
@@ -522,8 +522,8 @@ function VideoGrid({ videos, onPlay, favorites, onToggleFavorite, progress }) {
   if (!videos.length) {
     return (
       <div className="empty-state">
-        <span>No results</span>
-        <h2>No movies found</h2>
+        <span>🧸</span>
+        <h2>No videos found</h2>
         <p>Try matching another keyword, selecting another playlist sidebar item, or sync your Google Drive.</p>
       </div>
     );
@@ -690,7 +690,7 @@ function WatchPlayer({
         <div className="player-topline">
           <h2>{video.title} <span>({video.folderPathLabel})</span></h2>
           <button className="close" onClick={closePlayer} aria-label="Close player">
-            <span aria-hidden="true">x</span>
+            <span aria-hidden="true">×</span>
             <span className="close-label">Close</span>
           </button>
         </div>
@@ -717,7 +717,8 @@ function WatchPlayer({
           />
           {showPlayPrompt ? (
             <button className="player-play-overlay" onClick={startPlayback} type="button">
-                <span>Play</span>
+              <span aria-hidden="true">▶</span>
+              <span>Play</span>
             </button>
           ) : null}
           {isFullscreen ? (
@@ -728,8 +729,8 @@ function WatchPlayer({
         </div>
         <div className="player-footer">
           <span>
-            Google Drive approved folder stream - {playback.mode}
-            {playbackStatus ? ` - ${playbackStatus}` : ''}
+            🛡 Google Drive Approved Folder Stream · {playback.mode}
+            {playbackStatus ? ` · ${playbackStatus}` : ''}
           </span>
           <div className="player-footer-actions">
             <button className="player-close-btn" onClick={toggleFullscreen} type="button">
@@ -820,13 +821,13 @@ function ParentPanel({ reload, refreshedAt, videos, library }) {
   return (
     <aside className="parent-panel">
       <div>
-        <h2>Parent Control Center</h2>
+        <h2>🧑‍🚀 Parent Control Center</h2>
         <p>
           Need to sync new videos added to your Drive folder? Perform a refresh scan below.
         </p>
         {library.warnings?.length ? (
           <div className="warning-list">
-            {library.warnings.map((warning) => <span key={warning}>Warning: {warning}</span>)}
+            {library.warnings.map((warning) => <span key={warning}>⚠ {warning}</span>)}
           </div>
         ) : null}
       </div>
@@ -1050,7 +1051,7 @@ function App() {
       <main className="main-content">
         {error ? (
           <section className="error-card">
-            <span>Setup</span>
+            <span>🚧</span>
             <div>
               <h1>Setup needs attention</h1>
               <p>{error}</p>
@@ -1129,6 +1130,6 @@ function App() {
 }
 
 const rootElement = document.getElementById('root');
-const root = rootElement._driveMoviesRoot || createRoot(rootElement);
-rootElement._driveMoviesRoot = root;
+const root = rootElement._kidsCinemaRoot || createRoot(rootElement);
+rootElement._kidsCinemaRoot = root;
 root.render(<App />);
