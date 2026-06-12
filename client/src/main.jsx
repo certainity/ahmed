@@ -12,6 +12,7 @@ const STORAGE_KEYS = {
 const IS_MOVIE_SITE = typeof window !== 'undefined' && window.location.hostname.includes('drive-movies-cinema');
 const API_ORIGIN = IS_MOVIE_SITE ? 'https://kids-drive-cinema.onrender.com' : '';
 const API_LIBRARY = IS_MOVIE_SITE ? 'movie' : 'kids';
+const FAST_PLAYABLE_ONLY = !IS_MOVIE_SITE;
 const APP_COPY = IS_MOVIE_SITE
   ? {
       title: 'Drive Movies',
@@ -124,10 +125,10 @@ function getShuffleRank(video) {
 function getPlaybackSource(video) {
   if (!video.directPlayable) {
     return {
-      src: video.drivePreviewUrl,
-      fallbackSrc: video.hlsUrl,
-      mode: 'Google Drive preview stream',
-      embed: true
+      src: video.hlsUrl,
+      mode: 'HLS audio-compatible stream',
+      type: 'application/vnd.apple.mpegurl',
+      hls: true
     };
   }
 
@@ -207,6 +208,7 @@ function useVideos() {
     try {
       const params = new URLSearchParams();
       if (refresh) params.set('refresh', '1');
+      if (FAST_PLAYABLE_ONLY) params.set('playable', '1');
       const query = params.toString();
       const response = await fetch(apiUrl(`/api/videos${query ? `?${query}` : ''}`));
       const payload = await response.json();
@@ -707,18 +709,12 @@ function WatchPlayer({
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!video || !playback) return undefined;
+    if (!player || !video || !playback) return undefined;
 
     setPlaybackStatus('');
     setShowPlayPrompt(false);
     hlsRef.current?.destroy();
     hlsRef.current = null;
-
-    if (playback.embed) {
-      return undefined;
-    }
-
-    if (!player) return undefined;
 
     player.muted = false;
     player.volume = 1;
@@ -766,7 +762,7 @@ function WatchPlayer({
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player || !video || playback?.embed) return undefined;
+    if (!player || !video) return undefined;
     const saved = progress[video.id]?.currentTime;
     if (!saved || saved <= 5) return undefined;
 
@@ -811,36 +807,26 @@ function WatchPlayer({
           </button>
         </div>
         <div className="player-video-wrap">
-          {playback.embed ? (
-            <iframe
-              className="drive-preview-frame"
-              title={video.title}
-              src={playback.src}
-              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-              allowFullScreen
-            />
-          ) : (
-            <video
-              ref={playerRef}
-              poster={video.thumbnailUrl}
-              controls
-              autoPlay
-              preload="metadata"
-              playsInline
-              controlsList="nodownload nofullscreen noremoteplayback"
-              disablePictureInPicture
-              onPlay={() => setShowPlayPrompt(false)}
-              onVolumeChange={(event) => {
-                if (!event.currentTarget.muted) setPlaybackStatus('');
-              }}
-              onTimeUpdate={rememberProgress}
-              onPause={rememberProgress}
-              onEnded={() => {
-                rememberProgress();
-                onEnded(video.id);
-              }}
-            />
-          )}
+          <video
+            ref={playerRef}
+            poster={video.thumbnailUrl}
+            controls
+            autoPlay
+            preload="metadata"
+            playsInline
+            controlsList="nodownload nofullscreen noremoteplayback"
+            disablePictureInPicture
+            onPlay={() => setShowPlayPrompt(false)}
+            onVolumeChange={(event) => {
+              if (!event.currentTarget.muted) setPlaybackStatus('');
+            }}
+            onTimeUpdate={rememberProgress}
+            onPause={rememberProgress}
+            onEnded={() => {
+              rememberProgress();
+              onEnded(video.id);
+            }}
+          />
           {showPlayPrompt ? (
             <button className="player-play-overlay" onClick={startPlayback} type="button">
               <span aria-hidden="true">▶</span>
