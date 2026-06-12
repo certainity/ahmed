@@ -22,12 +22,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const PORT = Number(process.env.PORT || 5174);
-const DEFAULT_DRIVE_FOLDER_ID = '1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s';
-const STALE_DRIVE_FOLDER_IDS = new Set(['1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy']);
-const configuredDriveFolderId = String(process.env.GOOGLE_DRIVE_FOLDER_ID || '').trim();
-const DRIVE_FOLDER_ID = !configuredDriveFolderId || STALE_DRIVE_FOLDER_IDS.has(configuredDriveFolderId)
-  ? DEFAULT_DRIVE_FOLDER_ID
-  : configuredDriveFolderId;
+const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || '';
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STREAM_CHUNK_SIZE = Math.max(1024 * 1024, Number(process.env.STREAM_CHUNK_SIZE || 8 * 1024 * 1024));
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
