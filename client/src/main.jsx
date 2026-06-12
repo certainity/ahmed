@@ -703,6 +703,7 @@ function WatchPlayer({
       if (savedStart > 5) {
         hlsSource.searchParams.set('start', String(Math.max(0, Math.floor(savedStart - 3))));
       }
+      let lastRecoveryAt = 0;
 
       const hls = new Hls({
         enableWorker: true,
@@ -719,8 +720,7 @@ function WatchPlayer({
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data?.fatal && (data?.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR || data?.details === Hls.ErrorDetails.FRAG_LOAD_ERROR)) {
-          setPlaybackStatus('Preparing the next part of the stream...');
-          hls.startLoad(Math.max(0, player.currentTime || 0));
+          resumeHls();
           return;
         }
 
@@ -735,6 +735,9 @@ function WatchPlayer({
         }
       });
       const resumeHls = () => {
+        const now = Date.now();
+        if (now - lastRecoveryAt < 8000) return;
+        lastRecoveryAt = now;
         setPlaybackStatus('Preparing the next part of the stream...');
         hls.startLoad(Math.max(0, player.currentTime || 0));
       };
