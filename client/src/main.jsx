@@ -743,13 +743,29 @@ function WatchPlayer({
         setPlaybackStatus('Preparing the next part of the stream...');
         hls.startLoad(Math.max(0, player.currentTime || 0));
       };
+      const handleSeeking = () => {
+        if (!player.seekable.length) {
+          resumeHls();
+          return;
+        }
+
+        const seekableEnd = player.seekable.end(player.seekable.length - 1);
+        if (player.currentTime > seekableEnd - 3) {
+          player.currentTime = Math.max(0, seekableEnd - 3);
+          setPlaybackStatus('Preparing more of the video before skipping further...');
+        }
+
+        hls.startLoad(Math.max(0, player.currentTime || 0));
+      };
       const clearHlsStatus = () => setPlaybackStatus('');
       player.addEventListener('waiting', resumeHls);
       player.addEventListener('stalled', resumeHls);
+      player.addEventListener('seeking', handleSeeking);
       player.addEventListener('playing', clearHlsStatus);
       return () => {
         player.removeEventListener('waiting', resumeHls);
         player.removeEventListener('stalled', resumeHls);
+        player.removeEventListener('seeking', handleSeeking);
         player.removeEventListener('playing', clearHlsStatus);
         hls.destroy();
         hlsRef.current = null;
