@@ -7,7 +7,7 @@
     video: null,
     currentVideoId: '',
     cues: [],
-    enabled: true,
+    enabled: false,
     overlay: null,
     text: null,
     button: null,
@@ -109,7 +109,7 @@
     STATE.overlay.appendChild(STATE.text);
 
     STATE.button = document.createElement('button');
-    STATE.button.className = 'kdc-caption-toggle kdc-caption-on';
+    STATE.button.className = 'kdc-caption-toggle';
     STATE.button.type = 'button';
     STATE.button.textContent = 'CC';
     STATE.button.title = 'Toggle captions';

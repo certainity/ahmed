@@ -696,7 +696,10 @@ function WatchPlayer({
     if (playback.hls && Hls.isSupported()) {
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false
+        lowLatencyMode: false,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        startFragPrefetch: true
       });
       hlsRef.current = hls;
       hls.loadSource(playback.src);
@@ -731,11 +734,18 @@ function WatchPlayer({
     if (!saved || saved <= 5) return undefined;
 
     function restoreProgress() {
+      if (playback?.hls) {
+        const seekableEnd = player.seekable.length
+          ? player.seekable.end(player.seekable.length - 1)
+          : 0;
+        if (!seekableEnd || saved >= seekableEnd - 6) return;
+      }
       player.currentTime = saved;
     }
-    player.addEventListener('loadedmetadata', restoreProgress, { once: true });
-    return () => player.removeEventListener('loadedmetadata', restoreProgress);
-  }, [video, progress]);
+    const restoreEvent = playback?.hls ? 'canplay' : 'loadedmetadata';
+    player.addEventListener(restoreEvent, restoreProgress, { once: true });
+    return () => player.removeEventListener(restoreEvent, restoreProgress);
+  }, [video, playback, progress]);
 
   if (!video) return null;
 
