@@ -142,36 +142,6 @@ function getPlaybackSource(video) {
   };
 }
 
-function hlsUrlWithStart(src, startSeconds) {
-  if (!startSeconds || startSeconds <= 5) return src;
-  const url = new URL(src, window.location.origin);
-  url.searchParams.set('start', String(Math.floor(startSeconds)));
-  if (/^https?:\/\//i.test(src)) return url.href;
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-async function waitForHlsReady(src, setPlaybackStatus, signal) {
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const response = await fetch(src, { cache: 'no-store', signal });
-    if (response.ok) return;
-
-    if (response.status !== 202) {
-      throw new Error('Could not prepare this video for playback.');
-    }
-
-    setPlaybackStatus('Preparing playback buffer...');
-    await new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(resolve, 2000);
-      signal?.addEventListener('abort', () => {
-        window.clearTimeout(timeout);
-        reject(new DOMException('Aborted', 'AbortError'));
-      }, { once: true });
-    });
-  }
-
-  throw new Error('Still preparing this video. Try again shortly.');
-}
-
 function getFolderEpisodeQueue(currentVideo, videos) {
   if (!currentVideo) return [];
   return videos
@@ -727,43 +697,37 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
-      const saved = progress[video.id]?.currentTime || 0;
-      const hlsSource = hlsUrlWithStart(playback.src, saved);
-      const controller = new AbortController();
+      let retryTimeout = null;
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
-        autoStartLoad: false,
-        maxBufferLength: 120,
-        maxMaxBufferLength: 300,
-        maxBufferSize: 180 * 1000 * 1000,
-        backBufferLength: 30,
-        startFragPrefetch: true
+        lowLatencyMode: false
       });
       hlsRef.current = hls;
-      waitForHlsReady(hlsSource, setPlaybackStatus, controller.signal)
-        .then(() => {
-          if (controller.signal.aborted) return;
-          setPlaybackStatus('');
-          hls.loadSource(hlsSource);
-          hls.attachMedia(player);
-        })
-        .catch((error) => {
-          if (error.name !== 'AbortError') {
-            setPlaybackStatus(error.message || 'Could not prepare this video for playback.');
-          }
-        });
+      hls.loadSource(playback.src);
+      hls.attachMedia(player);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hls.startLoad(saved > 5 ? saved : -1);
+        setPlaybackStatus('');
         tryStartPlayback();
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (
+          (data?.type === Hls.ErrorTypes.NETWORK_ERROR && data?.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR) ||
+          data?.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
+        ) {
+          setPlaybackStatus('Preparing audio-compatible stream...');
+          window.clearTimeout(retryTimeout);
+          retryTimeout = window.setTimeout(() => {
+            hls.loadSource(playback.src);
+          }, 2500);
+          return;
+        }
+
         if (data?.fatal) {
           setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
         }
       });
       return () => {
-        controller.abort();
+        window.clearTimeout(retryTimeout);
         hls.destroy();
         hlsRef.current = null;
       };
