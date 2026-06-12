@@ -186,7 +186,8 @@ function getHlsPaths(videoId) {
   return {
     dir,
     playlist: path.join(dir, 'master.m3u8'),
-    segmentPattern: path.join(dir, 'segment-%05d.ts')
+    segmentPattern: path.join(dir, 'segment-%05d.ts'),
+    readyMarker: path.join(dir, '.ready')
   };
 }
 
@@ -209,13 +210,21 @@ function ffmpegHeaderString(headers) {
     .join('\r\n');
 }
 
+function isHlsReady(paths) {
+  if (!fs.existsSync(paths.readyMarker) || !fs.existsSync(paths.playlist)) return false;
+  const playlist = fs.readFileSync(paths.playlist, 'utf8');
+  return playlist.includes('#EXT-X-ENDLIST');
+}
+
 async function ensureHlsTranscode(video) {
   const paths = getHlsPaths(video.id);
-  if (fs.existsSync(paths.playlist)) return paths;
+  if (isHlsReady(paths)) return paths;
 
-  const existingJob = hlsJobs.get(video.id);
+  const jobKey = video.id;
+  const existingJob = hlsJobs.get(jobKey);
   if (existingJob) return existingJob.paths;
 
+  fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
@@ -252,17 +261,22 @@ async function ensureHlsTranscode(video) {
   });
 
   const job = { child, paths, stderr };
-  hlsJobs.set(video.id, job);
+  hlsJobs.set(jobKey, job);
 
   child.on('exit', (code) => {
-    hlsJobs.delete(video.id);
-    if (code !== 0 && !fs.existsSync(paths.playlist)) {
+    hlsJobs.delete(jobKey);
+    if (code === 0 && fs.existsSync(paths.playlist)) {
+      fs.writeFileSync(paths.readyMarker, new Date().toISOString());
+      return;
+    }
+
+    if (code !== 0) {
       console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
     }
   });
 
   child.on('error', (error) => {
-    hlsJobs.delete(video.id);
+    hlsJobs.delete(jobKey);
     console.error(`Could not start ffmpeg for ${video.id}:`, error);
   });
 
@@ -633,11 +647,10 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const paths = await ensureHlsTranscode(video);
-    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 25000));
-    if (!ready) {
+    if (!isHlsReady(paths)) {
       res.status(202).json({
         status: 'preparing',
-        message: 'Preparing playable audio stream. Try play again in a few seconds.'
+        message: 'Preparing the full video for smooth playback. Try play again in a few minutes.'
       });
       return;
     }

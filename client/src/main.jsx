@@ -102,6 +102,28 @@ function getPlaybackSource(video) {
   };
 }
 
+async function waitForHlsReady(src, setPlaybackStatus, signal) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    const response = await fetch(src, { cache: 'no-store', signal });
+    if (response.ok) return;
+
+    if (response.status !== 202) {
+      throw new Error('Could not prepare this video for playback.');
+    }
+
+    setPlaybackStatus('Preparing full video for smooth playback...');
+    await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(resolve, 5000);
+      signal?.addEventListener('abort', () => {
+        window.clearTimeout(timeout);
+        reject(new DOMException('Aborted', 'AbortError'));
+      }, { once: true });
+    });
+  }
+
+  throw new Error('Still preparing this video. Try again in a few minutes.');
+}
+
 function getFolderEpisodeQueue(currentVideo, videos) {
   if (!currentVideo) return [];
   return videos
@@ -657,22 +679,32 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
+      const controller = new AbortController();
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false
       });
       hlsRef.current = hls;
-      hls.loadSource(playback.src);
-      hls.attachMedia(player);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        tryStartPlayback();
-      });
+      waitForHlsReady(playback.src, setPlaybackStatus, controller.signal)
+        .then(() => {
+          if (controller.signal.aborted) return;
+          setPlaybackStatus('');
+          hls.loadSource(playback.src);
+          hls.attachMedia(player);
+        })
+        .catch((error) => {
+          if (error.name !== 'AbortError') {
+            setPlaybackStatus(error.message || 'Could not prepare this video for playback.');
+          }
+        });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => tryStartPlayback());
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (data?.fatal) {
           setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
         }
       });
       return () => {
+        controller.abort();
         hls.destroy();
         hlsRef.current = null;
       };
