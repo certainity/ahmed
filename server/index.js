@@ -206,8 +206,7 @@ function getHlsPaths(libraryKey, videoId) {
   return {
     dir,
     playlist: path.join(dir, 'master.m3u8'),
-    segmentPattern: path.join(dir, 'segment-%05d.ts'),
-    readyMarker: path.join(dir, '.ready')
+    segmentPattern: path.join(dir, 'segment-%05d.ts')
   };
 }
 
@@ -230,21 +229,14 @@ function ffmpegHeaderString(headers) {
     .join('\r\n');
 }
 
-function isHlsReady(paths) {
-  if (!fs.existsSync(paths.readyMarker) || !fs.existsSync(paths.playlist)) return false;
-  const playlist = fs.readFileSync(paths.playlist, 'utf8');
-  return playlist.includes('#EXT-X-ENDLIST');
-}
-
 async function ensureHlsTranscode(libraryKey, video) {
   const paths = getHlsPaths(libraryKey, video.id);
-  if (isHlsReady(paths)) return paths;
+  if (fs.existsSync(paths.playlist)) return paths;
 
   const jobKey = `${libraryKey}:${video.id}`;
   const existingJob = hlsJobs.get(jobKey);
   if (existingJob) return existingJob.paths;
 
-  fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
   const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
@@ -285,12 +277,7 @@ async function ensureHlsTranscode(libraryKey, video) {
 
   child.on('exit', (code) => {
     hlsJobs.delete(jobKey);
-    if (code === 0 && fs.existsSync(paths.playlist)) {
-      fs.writeFileSync(paths.readyMarker, new Date().toISOString());
-      return;
-    }
-
-    if (code !== 0) {
+    if (code !== 0 && !fs.existsSync(paths.playlist)) {
       console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
     }
   });
@@ -678,10 +665,11 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const paths = await ensureHlsTranscode(libraryKey, video);
-    if (!isHlsReady(paths)) {
+    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 25000));
+    if (!ready) {
       res.status(202).json({
         status: 'preparing',
-        message: 'Preparing the full video for smooth playback. Try play again in a few minutes.'
+        message: 'Preparing playable audio stream. Try play again in a few seconds.'
       });
       return;
     }
