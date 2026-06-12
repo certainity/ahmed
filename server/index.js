@@ -414,7 +414,7 @@ async function listVideos({ force = false, libraryKey = 'kids' } = {}) {
   return getLibraryCache(libraryKey).videos;
 }
 
-async function getAllowedVideo(fileId, libraryKey = 'kids') {
+async function getAllowedVideo(fileId, libraryKey = 'kids', { allowStale = false } = {}) {
   const id = String(fileId || '').trim();
   if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
     const err = new Error('Invalid video ID.');
@@ -422,7 +422,10 @@ async function getAllowedVideo(fileId, libraryKey = 'kids') {
     throw err;
   }
 
-  let videos = await listVideos({ libraryKey });
+  const videoCache = getLibraryCache(libraryKey);
+  let videos = allowStale && videoCache.videos.length
+    ? videoCache.videos
+    : await listVideos({ libraryKey });
   let video = videos.find((item) => item.id === id);
 
   // Refresh once in case the parent has just added a new Drive file.
@@ -627,7 +630,7 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
 app.get('/api/stream/:id', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
-    const video = await getAllowedVideo(req.params.id, libraryKey);
+    const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     const fileSize = Number(video.size || 0);
 
     if (!video.canDownload) {
@@ -685,7 +688,7 @@ app.get('/api/stream/:id', async (req, res, next) => {
 app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
-    const video = await getAllowedVideo(req.params.id, libraryKey);
+    const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     if (!video.canDownload) {
       const err = new Error('This file cannot be transcoded from Google Drive.');
       err.status = 403;
@@ -723,7 +726,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
 app.get('/api/hls/:id/:segment', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
-    await getAllowedVideo(req.params.id, libraryKey);
+    await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     const segment = String(req.params.segment || '');
     if (!/^segment-\d{5}\.ts$/.test(segment)) {
       const err = new Error('Invalid HLS segment.');
