@@ -139,36 +139,6 @@ function getPlaybackSource(video) {
   };
 }
 
-function hlsUrlWithStart(src, startSeconds) {
-  if (!startSeconds || startSeconds <= 5) return src;
-  const url = new URL(src, window.location.origin);
-  url.searchParams.set('start', String(Math.floor(startSeconds)));
-  if (/^https?:\/\//i.test(src)) return url.href;
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-async function waitForHlsReady(src, setPlaybackStatus, signal, maxAttempts = 120) {
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const response = await fetch(src, { cache: 'no-store', signal });
-    if (response.ok) return;
-
-    if (response.status !== 202) {
-      throw new Error('Could not prepare this video for playback.');
-    }
-
-    setPlaybackStatus('Preparing playback buffer...');
-    await new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(resolve, 2000);
-      signal?.addEventListener('abort', () => {
-        window.clearTimeout(timeout);
-        reject(new DOMException('Aborted', 'AbortError'));
-      }, { once: true });
-    });
-  }
-
-  throw new Error('Still preparing this video. Try again shortly.');
-}
-
 function getFolderEpisodeQueue(currentVideo, videos) {
   if (!currentVideo) return [];
   return videos
@@ -636,8 +606,6 @@ function WatchPlayer({
   const playerRef = useRef(null);
   const shellRef = useRef(null);
   const hlsRef = useRef(null);
-  const hlsStartPositionRef = useRef(-1);
-  const suppressRestoreRef = useRef(false);
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -726,59 +694,14 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
-      const saved = progress[video.id]?.currentTime || 0;
-      const hlsSource = hlsUrlWithStart(playback.src, saved);
-      const controller = new AbortController();
-      suppressRestoreRef.current = false;
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
-        autoStartLoad: false,
-        maxBufferLength: 120,
-        maxMaxBufferLength: 300,
-        maxBufferSize: 180 * 1000 * 1000,
-        backBufferLength: 30,
-        startFragPrefetch: true
+        lowLatencyMode: false
       });
       hlsRef.current = hls;
-
-      function attachHlsSource(source, startPosition) {
-        hlsStartPositionRef.current = startPosition;
-        hls.loadSource(source);
-        hls.attachMedia(player);
-      }
-
-      waitForHlsReady(hlsSource, setPlaybackStatus, controller.signal, saved > 5 ? 8 : 120)
-        .then(() => {
-          if (controller.signal.aborted) return;
-          setPlaybackStatus('');
-          attachHlsSource(hlsSource, saved > 5 ? saved : -1);
-        })
-        .catch((error) => {
-          if (error.name === 'AbortError') return;
-          if (saved > 5 && !controller.signal.aborted) {
-            suppressRestoreRef.current = true;
-            setPlaybackStatus('Starting while resume buffer prepares...');
-            waitForHlsReady(playback.src, setPlaybackStatus, controller.signal, 120)
-              .then(() => {
-                if (controller.signal.aborted) return;
-                setPlaybackStatus('');
-                attachHlsSource(playback.src, -1);
-              })
-              .catch((fallbackError) => {
-                if (fallbackError.name !== 'AbortError') {
-                  setPlaybackStatus(fallbackError.message || 'Could not prepare this video for playback.');
-                }
-              });
-            return;
-          }
-
-          if (error.name !== 'AbortError') {
-            setPlaybackStatus(error.message || 'Could not prepare this video for playback.');
-          }
-        });
+      hls.loadSource(playback.src);
+      hls.attachMedia(player);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        hls.startLoad(hlsStartPositionRef.current);
         tryStartPlayback();
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -787,7 +710,6 @@ function WatchPlayer({
         }
       });
       return () => {
-        controller.abort();
         hls.destroy();
         hlsRef.current = null;
       };
@@ -807,10 +729,8 @@ function WatchPlayer({
     if (!player || !video) return undefined;
     const saved = progress[video.id]?.currentTime;
     if (!saved || saved <= 5) return undefined;
-    if (playback?.hls && suppressRestoreRef.current) return undefined;
 
     function restoreProgress() {
-      if (playback?.hls && suppressRestoreRef.current) return;
       player.currentTime = saved;
     }
     player.addEventListener('loadedmetadata', restoreProgress, { once: true });
