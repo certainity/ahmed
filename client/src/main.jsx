@@ -610,6 +610,7 @@ function WatchPlayer({
   const playerRef = useRef(null);
   const shellRef = useRef(null);
   const hlsRef = useRef(null);
+  const initialProgressRef = useRef({});
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -698,7 +699,8 @@ function WatchPlayer({
     player.volume = 1;
 
     if (playback.hls && Hls.isSupported()) {
-      const savedStart = progress[video.id]?.currentTime || 0;
+      const savedStart = initialProgressRef.current[video.id] ?? progress[video.id]?.currentTime ?? 0;
+      initialProgressRef.current[video.id] = savedStart;
       const hlsSource = new URL(playback.src, window.location.href);
       if (savedStart > 5) {
         hlsSource.searchParams.set('start', String(Math.max(0, Math.floor(savedStart - 3))));
@@ -761,7 +763,7 @@ function WatchPlayer({
       player.removeAttribute('src');
       player.load();
     };
-  }, [video, playback, progress]);
+  }, [video, playback]);
 
   useEffect(() => {
     const player = playerRef.current;
