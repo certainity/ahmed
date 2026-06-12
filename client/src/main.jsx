@@ -611,7 +611,6 @@ function WatchPlayer({
   const hlsRef = useRef(null);
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
-  const [showPlayPrompt, setShowPlayPrompt] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   function tryStartPlayback() {
@@ -622,11 +621,9 @@ function WatchPlayer({
     player.volume = 1;
 
     player.play().then(() => {
-      setShowPlayPrompt(false);
       setPlaybackStatus('');
     }).catch(() => {
-      setPlaybackStatus('Tap play to start with audio.');
-      setShowPlayPrompt(true);
+      setPlaybackStatus('Use the video play button to start with audio.');
     });
   }
 
@@ -688,9 +685,8 @@ function WatchPlayer({
     const player = playerRef.current;
     if (!player || !video || !playback) return undefined;
 
-    setPlaybackStatus('');
-    setShowPlayPrompt(false);
-    hlsRef.current?.destroy();
+      setPlaybackStatus('');
+      hlsRef.current?.destroy();
     hlsRef.current = null;
 
     player.muted = false;
@@ -757,11 +753,6 @@ function WatchPlayer({
 
   if (!video) return null;
 
-  function startPlayback() {
-    setShowPlayPrompt(false);
-    tryStartPlayback();
-  }
-
   function rememberProgress() {
     const player = playerRef.current;
     if (!player) return;
@@ -799,7 +790,7 @@ function WatchPlayer({
             playsInline
             controlsList="nodownload nofullscreen noremoteplayback"
             disablePictureInPicture
-            onPlay={() => setShowPlayPrompt(false)}
+            onPlay={() => setPlaybackStatus('')}
             onVolumeChange={(event) => {
               if (!event.currentTarget.muted) setPlaybackStatus('');
             }}
@@ -810,12 +801,6 @@ function WatchPlayer({
               onEnded(video.id);
             }}
           />
-          {showPlayPrompt ? (
-            <button className="player-play-overlay" onClick={startPlayback} type="button">
-              <span aria-hidden="true">▶</span>
-              <span>Play</span>
-            </button>
-          ) : null}
           {isFullscreen ? (
             <button className="fullscreen-exit-btn" onClick={toggleFullscreen} type="button">
               Exit
