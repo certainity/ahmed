@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: kids-drive-cinema
+    name: drive-movies-cinema
     runtime: docker
     plan: free
     region: oregon
@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: 5174
       - key: GOOGLE_DRIVE_FOLDER_ID
-        value: 1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
+        value: 1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s
       - key: INCLUDE_SUBFOLDERS
         value: true
       - key: MAX_SCAN_DEPTH

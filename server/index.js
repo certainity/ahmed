@@ -1,6 +1,6 @@
-import 'dotenv/config';
 import compression from 'compression';
 import cors from 'cors';
+import dotenv from 'dotenv';
 import express from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -12,6 +12,9 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const CACHE_DIR = path.resolve(__dirname, 'cache-thumbnails');
 if (!fs.existsSync(CACHE_DIR)) {
@@ -41,7 +44,11 @@ function createAuth() {
     });
   }
 
-  const keyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const configuredKeyFilename = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const keyFilename = configuredKeyFilename && !path.isAbsolute(configuredKeyFilename)
+    ? path.resolve(__dirname, configuredKeyFilename)
+    : configuredKeyFilename;
+
   return new google.auth.GoogleAuth({
     keyFilename,
     scopes: SCOPES
@@ -59,7 +66,7 @@ app.use(helmet({
 }));
 app.use(compression());
 app.use(morgan('tiny'));
-app.use(cors({
+const apiCors = cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
     if (CLIENT_ORIGIN === '*' || CLIENT_ORIGIN.split(',').map((s) => s.trim()).includes(origin)) {
@@ -67,7 +74,8 @@ app.use(cors({
     }
     return callback(new Error(`Origin not allowed by CORS: ${origin}`));
   }
-}));
+});
+app.use('/api', apiCors);
 
 let videoCache = {
   fetchedAt: 0,
@@ -534,5 +542,5 @@ app.use((error, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Kids Drive Cinema server running on http://localhost:${PORT}`);
+  console.log(`Drive Movies Cinema server running on http://localhost:${PORT}`);
 });

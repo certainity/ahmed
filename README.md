@@ -1,17 +1,17 @@
-# Kids Drive Cinema
+# Drive Movies Cinema
 
-A YouTube-style movie shelf for your kids that streams **only** video files from your approved Google Drive folder tree.
+A YouTube-style movie website that streams **only** video files from your approved Google Drive folder tree.
 
 This build is already configured for this Drive folder ID:
 
 ```txt
-1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
+1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s
 ```
 
 Source folder URL:
 
 ```txt
-https://drive.google.com/drive/folders/1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
+https://drive.google.com/drive/folders/1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s
 ```
 
 The important safety idea is simple: the React app never talks directly to Google Drive. A small Node/Express backend lists and streams only videos discovered under the configured `GOOGLE_DRIVE_FOLDER_ID` and its approved subfolders.
@@ -20,13 +20,13 @@ The important safety idea is simple: the React app never talks directly to Googl
 
 - `server/.env.example` already contains your folder ID.
 - The backend scans nested Google Drive folders, not only videos placed directly in the root folder.
-- The UI now shows folder collections, so folders like shows/seasons appear as kid-friendly shelves.
+- The UI now shows folder collections, so folders like franchises/seasons appear as movie shelves.
 - Search works across movie titles, filenames, and folder paths.
 - The player still validates every requested video ID against the approved Drive folder tree before streaming.
 
 ## Features
 
-- Kid-friendly responsive React UI
+- Responsive movie-streaming React UI
 - Private Google Drive folder tree as the only content source
 - Backend streaming proxy with HTTP Range support for seeking
 - Drive thumbnails, with a colorful fallback thumbnail when Google has not generated one yet
@@ -37,7 +37,7 @@ The important safety idea is simple: the React app never talks directly to Googl
 ## Project structure
 
 ```txt
-kids-drive-cinema/
+drive-movies-cinema/
   client/        React + Vite app
   server/        Express API + Google Drive streaming proxy
 ```
@@ -59,7 +59,7 @@ This is the safest method for a private family app because your Google credentia
 5. Put the key at `server/service-account.json`.
 6. Open your Google Drive movie folder.
 7. Share that folder with the service account email as **Viewer**.
-8. Keep only kid-approved videos/folders inside that Drive folder tree.
+8. Keep only approved movies/videos/folders inside that Drive folder tree.
 
 ## Local setup
 
@@ -72,7 +72,7 @@ cp client/.env.example client/.env
 Your copied `server/.env` will already contain:
 
 ```env
-GOOGLE_DRIVE_FOLDER_ID=1fU3vbnn3tBtONgb9N1kPQ3kM8hRzW0xy
+GOOGLE_DRIVE_FOLDER_ID=1ECrt0eLyv1wGFUfoNc6VMm-vuxblBp-s
 INCLUDE_SUBFOLDERS=true
 MAX_SCAN_DEPTH=8
 MAX_FOLDERS=750
@@ -141,24 +141,24 @@ Google Drive can store many video formats, but your browser still decides what i
 - Share only the approved movie folder with the service account.
 - The frontend Parent PIN is a convenience lock, not a security boundary.
 - The actual boundary is in the backend: `/api/stream/:id` checks the Drive file ID against the scanned approved folder tree before streaming.
-- Do not deploy this publicly without adding proper authentication in front of the app, such as Cloudflare Access, Tailscale, Authelia, or your hosting provider’s auth layer.
+- Do not deploy this publicly without adding proper authentication in front of the app, such as Cloudflare Access, Tailscale, Authelia, or your hosting provider's auth layer.
 - Use only videos you own, created, or otherwise have permission to stream.
 
 ## Useful endpoints
 
-- `GET /health` — server status
-- `GET /api/videos` — list approved folder-tree videos
-- `GET /api/videos?refresh=1` — refresh Drive cache
-- `GET /api/thumbnails/:id` — thumbnail proxy
-- `GET /api/stream/:id` — folder-locked video stream
+- `GET /health` - server status
+- `GET /api/videos` - list approved folder-tree videos
+- `GET /api/videos?refresh=1` - refresh Drive cache
+- `GET /api/thumbnails/:id` - thumbnail proxy
+- `GET /api/stream/:id` - folder-locked video stream
 
 ## Troubleshooting
 
-### “GOOGLE_DRIVE_FOLDER_ID is not configured”
+### "GOOGLE_DRIVE_FOLDER_ID is not configured"
 
 Copy `server/.env.example` to `server/.env`. This build already includes your folder ID in `.env.example`.
 
-### “Video not found in the approved Google Drive folder tree”
+### "Video not found in the approved Google Drive folder tree"
 
 The file ID being requested is not currently discovered under the configured Drive folder. Refresh from the parent panel after adding a new video.
 
