@@ -83,8 +83,12 @@ function formatSize(bytes) {
 
 function getProgressPercent(video, progress) {
   const item = progress[video.id];
-  if (!item || !video.durationMs) return 0;
-  return Math.min(98, Math.max(0, (item.currentTime / (video.durationMs / 1000)) * 100));
+  if (!item || !item.currentTime) return 0;
+  const durationSeconds = video.durationMs ? video.durationMs / 1000 : item.duration;
+  if (!durationSeconds || !Number.isFinite(durationSeconds)) {
+    return item.currentTime > 5 ? 10 : 0;
+  }
+  return Math.min(98, Math.max(0, (item.currentTime / durationSeconds) * 100));
 }
 
 function hashString(value) {
@@ -1093,6 +1097,9 @@ function App() {
   function updateFilter(nextFilter) {
     setSearch('');
     setFilter(nextFilter);
+    if (nextFilter !== 'all') {
+      setCollection('all');
+    }
     leaveWatchPage();
   }
 
