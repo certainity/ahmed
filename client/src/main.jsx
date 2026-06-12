@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import Hls from 'hls.js';
 import './styles.css';
 
 const STORAGE_KEYS = {
@@ -85,9 +86,18 @@ function getShuffleRank(video) {
 }
 
 function getPlaybackSource(video) {
+  if (!video.directPlayable) {
+    return {
+      src: video.hlsUrl,
+      mode: 'HLS audio-compatible stream',
+      type: 'application/vnd.apple.mpegurl',
+      hls: true
+    };
+  }
+
   return {
     src: video.streamUrl,
-    mode: video.directPlayable ? 'Direct browser playback' : 'Direct Drive stream',
+    mode: 'Direct browser playback',
     type: video.mimeType || 'video/mp4'
   };
 }
@@ -558,6 +568,7 @@ function WatchPlayer({
 }) {
   const playerRef = useRef(null);
   const shellRef = useRef(null);
+  const hlsRef = useRef(null);
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [showPlayPrompt, setShowPlayPrompt] = useState(false);
@@ -639,13 +650,41 @@ function WatchPlayer({
 
     setPlaybackStatus('');
     setShowPlayPrompt(false);
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
 
     player.muted = false;
     player.volume = 1;
+
+    if (playback.hls && Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false
+      });
+      hlsRef.current = hls;
+      hls.loadSource(playback.src);
+      hls.attachMedia(player);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        tryStartPlayback();
+      });
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data?.fatal) {
+          setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
+        }
+      });
+      return () => {
+        hls.destroy();
+        hlsRef.current = null;
+      };
+    }
+
     player.src = playback.src;
     player.load();
     tryStartPlayback();
-    return undefined;
+    return () => {
+      player.removeAttribute('src');
+      player.load();
+    };
   }, [video, playback]);
 
   useEffect(() => {

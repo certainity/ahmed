@@ -11,6 +11,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache ffmpeg
+
 # Copy packages config and install production dependencies
 COPY package*.json ./
 COPY server/package*.json ./server/
