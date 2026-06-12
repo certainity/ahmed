@@ -124,10 +124,10 @@ function getShuffleRank(video) {
 function getPlaybackSource(video) {
   if (!video.directPlayable) {
     return {
-      src: video.hlsUrl,
-      mode: 'Browser-compatible HLS stream',
-      type: 'application/vnd.apple.mpegurl',
-      hls: true
+      src: video.drivePreviewUrl,
+      fallbackSrc: video.hlsUrl,
+      mode: 'Google Drive preview stream',
+      embed: true
     };
   }
 
@@ -139,7 +139,7 @@ function getPlaybackSource(video) {
 }
 
 async function waitForHlsReady(src, setPlaybackStatus, signal) {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
     const response = await fetch(src, { cache: 'no-store', signal });
     if (response.ok) return;
 
@@ -147,9 +147,9 @@ async function waitForHlsReady(src, setPlaybackStatus, signal) {
       throw new Error('Could not prepare this video for playback.');
     }
 
-    setPlaybackStatus('Preparing browser-compatible stream...');
+    setPlaybackStatus('Preparing video buffer for smooth playback...');
     await new Promise((resolve, reject) => {
-      const timeout = window.setTimeout(resolve, 2000);
+      const timeout = window.setTimeout(resolve, 5000);
       signal?.addEventListener('abort', () => {
         window.clearTimeout(timeout);
         reject(new DOMException('Aborted', 'AbortError'));
@@ -157,7 +157,7 @@ async function waitForHlsReady(src, setPlaybackStatus, signal) {
     });
   }
 
-  throw new Error('Still preparing this video. Try again shortly.');
+  throw new Error('Still preparing this video. Try again in a minute.');
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {
@@ -714,6 +714,10 @@ function WatchPlayer({
     hlsRef.current?.destroy();
     hlsRef.current = null;
 
+    if (playback.embed) {
+      return undefined;
+    }
+
     if (!player) return undefined;
 
     player.muted = false;
@@ -723,10 +727,7 @@ function WatchPlayer({
       const controller = new AbortController();
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: false,
-        maxBufferLength: 20,
-        maxMaxBufferLength: 40,
-        startFragPrefetch: true
+        lowLatencyMode: false
       });
       hlsRef.current = hls;
       waitForHlsReady(playback.src, setPlaybackStatus, controller.signal)
@@ -765,7 +766,7 @@ function WatchPlayer({
 
   useEffect(() => {
     const player = playerRef.current;
-    if (!player || !video) return undefined;
+    if (!player || !video || playback?.embed) return undefined;
     const saved = progress[video.id]?.currentTime;
     if (!saved || saved <= 5) return undefined;
 
@@ -810,26 +811,36 @@ function WatchPlayer({
           </button>
         </div>
         <div className="player-video-wrap">
-          <video
-            ref={playerRef}
-            poster={video.thumbnailUrl}
-            controls
-            autoPlay
-            preload="metadata"
-            playsInline
-            controlsList="nodownload nofullscreen noremoteplayback"
-            disablePictureInPicture
-            onPlay={() => setShowPlayPrompt(false)}
-            onVolumeChange={(event) => {
-              if (!event.currentTarget.muted) setPlaybackStatus('');
-            }}
-            onTimeUpdate={rememberProgress}
-            onPause={rememberProgress}
-            onEnded={() => {
-              rememberProgress();
-              onEnded(video.id);
-            }}
-          />
+          {playback.embed ? (
+            <iframe
+              className="drive-preview-frame"
+              title={video.title}
+              src={playback.src}
+              allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <video
+              ref={playerRef}
+              poster={video.thumbnailUrl}
+              controls
+              autoPlay
+              preload="metadata"
+              playsInline
+              controlsList="nodownload nofullscreen noremoteplayback"
+              disablePictureInPicture
+              onPlay={() => setShowPlayPrompt(false)}
+              onVolumeChange={(event) => {
+                if (!event.currentTarget.muted) setPlaybackStatus('');
+              }}
+              onTimeUpdate={rememberProgress}
+              onPause={rememberProgress}
+              onEnded={() => {
+                rememberProgress();
+                onEnded(video.id);
+              }}
+            />
+          )}
           {showPlayPrompt ? (
             <button className="player-play-overlay" onClick={startPlayback} type="button">
               <span aria-hidden="true">▶</span>

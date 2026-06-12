@@ -20,7 +20,6 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
-const HLS_CACHE_VERSION = 'v2';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
   fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
@@ -231,7 +230,7 @@ function publicVideo(video) {
 function getHlsPaths(libraryKey, videoId) {
   const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
   const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
-  const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${HLS_CACHE_VERSION}-${safeId}`);
+  const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${safeId}`);
   return {
     dir,
     playlist: path.join(dir, 'master.m3u8'),
@@ -271,7 +270,7 @@ function isHlsPlayable(paths) {
   const segmentCount = fs.readdirSync(paths.dir)
     .filter((name) => /^segment-\d{5}\.ts$/.test(name))
     .length;
-  return segmentCount >= Number(process.env.HLS_MIN_READY_SEGMENTS || 3);
+  return segmentCount >= Number(process.env.HLS_MIN_READY_SEGMENTS || 30);
 }
 
 async function ensureHlsTranscode(libraryKey, video) {
@@ -291,24 +290,13 @@ async function ensureHlsTranscode(libraryKey, video) {
     '-hide_banner',
     '-loglevel', 'warning',
     '-headers', ffmpegHeaderString(headers),
-    '-reconnect', '1',
-    '-reconnect_streamed', '1',
-    '-reconnect_delay_max', '5',
     '-i', driveUrl,
     '-map', '0:v:0',
     '-map', '0:a:0?',
-    '-c:v', 'libx264',
-    '-preset', process.env.HLS_X264_PRESET || 'ultrafast',
-    '-tune', 'zerolatency',
-    '-crf', process.env.HLS_CRF || '28',
-    '-vf', process.env.HLS_VIDEO_FILTER || 'scale=-2:min(480\\,ih)',
-    '-maxrate', process.env.HLS_MAXRATE || '1400k',
-    '-bufsize', process.env.HLS_BUFSIZE || '2800k',
-    '-pix_fmt', 'yuv420p',
+    '-c:v', 'copy',
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ac', '2',
-    '-movflags', '+faststart',
     '-max_muxing_queue_size', '2048',
     '-f', 'hls',
     '-hls_time', '2',
