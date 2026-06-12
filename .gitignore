@@ -3,5 +3,7 @@ dist/
 .env
 server/.env
 server/service-account.json
+server/cache-thumbnails/
+server/cache-hls/
 .DS_Store
 npm-debug.log*

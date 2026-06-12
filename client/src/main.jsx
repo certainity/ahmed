@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import Hls from 'hls.js';
 import './styles.css';
 
 const STORAGE_KEYS = {
@@ -47,6 +48,55 @@ function getProgressPercent(video, progress) {
   const item = progress[video.id];
   if (!item || !video.durationMs) return 0;
   return Math.min(98, Math.max(0, (item.currentTime / (video.durationMs / 1000)) * 100));
+}
+
+function hashString(value) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function getEpisodeLabel(title) {
+  const seasonEpisode = title.match(/S(\d{1,2})E(\d{1,3})/i);
+  if (seasonEpisode) return `S${seasonEpisode[1]} E${seasonEpisode[2]}`;
+  const episode = title.match(/\b(?:episode|ep)\s*(\d{1,3})\b/i);
+  if (episode) return `EP ${episode[1]}`;
+  return 'Movie';
+}
+
+function getThumbnailStyle(video) {
+  const hash = hashString(`${video.id}:${video.title}`);
+  const hue = hash % 360;
+  const secondHue = (hue + 42 + (hash % 64)) % 360;
+  const x = 42 + (hash % 17);
+  const y = 42 + ((hash >> 5) % 17);
+
+  return {
+    '--thumb-accent': `hsl(${hue} 82% 56%)`,
+    '--thumb-accent-2': `hsl(${secondHue} 82% 60%)`,
+    '--thumb-x': `${x}%`,
+    '--thumb-y': `${y}%`
+  };
+}
+
+function getPlaybackSource(video) {
+  if (video.directPlayable) {
+    return {
+      src: video.streamUrl,
+      mode: 'Direct browser playback',
+      type: video.mimeType || 'video/mp4',
+      hls: false
+    };
+  }
+
+  return {
+    src: video.hlsUrl || video.transcodeUrl || video.streamUrl,
+    mode: 'Compatibility playback',
+    type: 'application/vnd.apple.mpegurl',
+    hls: true
+  };
 }
 
 function useVideos() {
@@ -220,6 +270,11 @@ function Hero({ featured, onPlay, total }) {
         <p>
           {featured.folderPathLabel ? `From Collection: ${featured.folderPathLabel}` : 'Private cinema video from your shared Google Drive folder.'}
         </p>
+        <div className="hero-stats" aria-label="Featured video details">
+          <span>{total} videos ready</span>
+          <span>{featured.isHd ? 'HD available' : 'Standard quality'}</span>
+          {featured.size ? <span>{formatSize(featured.size)}</span> : null}
+        </div>
         <div className="hero-actions">
           <button className="pill-btn primary" onClick={() => onPlay(featured)}>▶ Play Video</button>
           {featured.durationMs ? <span className="pill-btn">⏱ {formatDuration(featured.durationMs)}</span> : null}
@@ -230,14 +285,165 @@ function Hero({ featured, onPlay, total }) {
   );
 }
 
+function LibraryToolbar({
+  filter,
+  setFilter,
+  collection,
+  setCollection,
+  collectionOptions,
+  qualityFilter,
+  setQualityFilter,
+  durationFilter,
+  setDurationFilter,
+  sortBy,
+  setSortBy,
+  counts,
+  visibleCount,
+  search,
+  setSearch
+}) {
+  const quickFilters = [
+    { key: 'all', label: 'All', count: counts.all },
+    { key: 'continue', label: 'Continue', count: counts.continue },
+    { key: 'favorites', label: 'Favorites', count: counts.favorites },
+    { key: 'short', label: 'Shorts', count: counts.short },
+    { key: 'hd', label: 'HD', count: counts.hd }
+  ];
+  const activeCollection = collectionOptions.find((item) => item.key === collection)?.label || 'All Playlists';
+  const hasSearch = search.trim().length > 0;
+  const hasExtraFilters = qualityFilter !== 'all' || durationFilter !== 'all' || sortBy !== 'title';
+
+  function clearFilters() {
+    setSearch('');
+    setFilter('all');
+    setCollection('all');
+    setQualityFilter('all');
+    setDurationFilter('all');
+    setSortBy('title');
+  }
+
+  return (
+    <section className="library-toolbar" aria-label="Library controls">
+      <div className="library-heading">
+        <div>
+          <p className="section-kicker">Now playing from Drive</p>
+          <h2>{activeCollection}</h2>
+        </div>
+        <span className="result-count">
+          {visibleCount} {visibleCount === 1 ? 'video' : 'videos'}{hasSearch ? ' found' : ''}
+        </span>
+      </div>
+
+      <div className="filter-controls" aria-label="Detailed filters">
+        <label className="filter-control">
+          <span>Playlist</span>
+          <select
+            value={collection}
+            onChange={(event) => {
+              setCollection(event.target.value);
+              setFilter('all');
+            }}
+          >
+            {collectionOptions.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label} ({item.count})
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="filter-control">
+          <span>Quality</span>
+          <select value={qualityFilter} onChange={(event) => setQualityFilter(event.target.value)}>
+            <option value="all">Any quality</option>
+            <option value="hd">HD only</option>
+            <option value="sd">SD only</option>
+          </select>
+        </label>
+
+        <label className="filter-control">
+          <span>Length</span>
+          <select value={durationFilter} onChange={(event) => setDurationFilter(event.target.value)}>
+            <option value="all">Any length</option>
+            <option value="short">Under 20 min</option>
+            <option value="medium">20-45 min</option>
+            <option value="long">Over 45 min</option>
+          </select>
+        </label>
+
+        <label className="filter-control">
+          <span>Sort</span>
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+            <option value="title">Title A-Z</option>
+            <option value="newest">Newest first</option>
+            <option value="longest">Longest first</option>
+            <option value="shortest">Shortest first</option>
+            <option value="largest">Largest file</option>
+          </select>
+        </label>
+
+        {(hasSearch || filter !== 'all' || collection !== 'all' || hasExtraFilters) ? (
+          <button className="clear-filters" type="button" onClick={clearFilters}>
+            Clear
+          </button>
+        ) : null}
+      </div>
+
+      <div className="quick-filter-row" role="list" aria-label="Video filters">
+        {quickFilters.map((item) => (
+          <button
+            key={item.key}
+            className={`quick-filter ${filter === item.key ? 'active' : ''}`}
+            onClick={() => setFilter(item.key)}
+            type="button"
+          >
+            <span>{item.label}</span>
+            <small>{item.count || 0}</small>
+          </button>
+        ))}
+      </div>
+
+      {collectionOptions.length > 1 ? (
+        <div className="collection-rail" aria-label="Collections">
+          {collectionOptions.map((item) => (
+            <button
+              key={item.key}
+              className={`collection-chip ${collection === item.key ? 'active' : ''}`}
+              onClick={() => {
+                setCollection(item.key);
+                setFilter('all');
+              }}
+              type="button"
+              title={item.label}
+            >
+              <span>{item.label}</span>
+              <small>{item.count}</small>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function VideoCard({ video, onPlay, favorite, onToggleFavorite, progress }) {
   const progressPercent = getProgressPercent(video, progress);
   const channelLetter = (video.collection || 'Main').charAt(0);
+  const episodeLabel = getEpisodeLabel(video.title);
+  const thumbnailStyle = getThumbnailStyle(video);
 
   return (
     <article className="video-card">
-      <button className="thumbnail" onClick={() => onPlay(video)} aria-label={`Play ${video.title}`}>
+      <button
+        className="thumbnail"
+        onClick={() => onPlay(video)}
+        aria-label={`Play ${video.title}`}
+        style={thumbnailStyle}
+      >
         <img src={video.thumbnailUrl} alt="" loading="lazy" />
+        <span className="thumbnail-vignette" aria-hidden="true" />
+        <span className="episode-chip">{episodeLabel}</span>
+        <span className="thumbnail-title">{video.title}</span>
         <span className="duration-chip">{formatDuration(video.durationMs)}</span>
         {progressPercent > 2 ? <span className="progress-line" style={{ width: `${progressPercent}%` }} /> : null}
       </button>
@@ -303,25 +509,130 @@ function VideoGrid({ videos, onPlay, favorites, onToggleFavorite, progress }) {
 
 function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
   const playerRef = useRef(null);
+  const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
+  const [playbackStatus, setPlaybackStatus] = useState('');
+  const [showPlayPrompt, setShowPlayPrompt] = useState(false);
+
+  function tryStartPlayback({ mutedFallback = false, forceUnmute = false } = {}) {
+    const player = playerRef.current;
+    if (!player) return;
+
+    if (forceUnmute) {
+      player.muted = false;
+    }
+
+    player.play().then(() => {
+      setShowPlayPrompt(false);
+      setPlaybackStatus(player.muted ? 'Playing muted - use the volume button to unmute.' : '');
+    }).catch(() => {
+      if (mutedFallback) {
+        player.muted = true;
+        player.play().then(() => {
+          setShowPlayPrompt(false);
+          setPlaybackStatus('Playing muted - use the volume button to unmute.');
+        }).catch(() => {
+          setPlaybackStatus('Tap play to start stream.');
+          setShowPlayPrompt(true);
+        });
+        return;
+      }
+
+      setPlaybackStatus('Tap play to start stream.');
+      setShowPlayPrompt(true);
+    });
+  }
+
+  function closePlayer() {
+    const player = playerRef.current;
+    if (player) {
+      player.pause();
+    }
+    onClose();
+  }
 
   useEffect(() => {
     function onKeyDown(event) {
-      if (event.key === 'Escape') onClose();
+      if (event.key === 'Escape') closePlayer();
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [onClose]);
 
   useEffect(() => {
+    if (!video) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [video]);
+
+  useEffect(() => {
     const player = playerRef.current;
-    if (!player || !video) return;
+    if (!player || !video || !playback) return undefined;
+
+    setPlaybackStatus(playback.hls ? 'Preparing compatibility stream...' : '');
+    setShowPlayPrompt(false);
+
+    if (playback.hls) {
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          backBufferLength: 30,
+          maxBufferLength: 30
+        });
+
+        hls.loadSource(playback.src);
+        hls.attachMedia(player);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setPlaybackStatus('');
+          tryStartPlayback({ mutedFallback: true });
+        });
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            setPlaybackStatus('Playback needs a new stream. Please reopen this video.');
+            setShowPlayPrompt(true);
+          }
+        });
+
+        return () => {
+          hls.destroy();
+        };
+      }
+
+      if (player.canPlayType('application/vnd.apple.mpegurl')) {
+        player.src = playback.src;
+        player.load();
+        setPlaybackStatus('');
+        tryStartPlayback({ mutedFallback: true });
+        return undefined;
+      }
+    }
+
+    player.src = playback.src;
+    player.load();
+    setPlaybackStatus('');
+    tryStartPlayback();
+    return undefined;
+  }, [video, playback]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player || !video) return undefined;
     const saved = progress[video.id]?.currentTime;
-    if (saved && saved > 5) {
+    if (!saved || saved <= 5) return undefined;
+
+    function restoreProgress() {
       player.currentTime = saved;
     }
+    player.addEventListener('loadedmetadata', restoreProgress, { once: true });
+    return () => player.removeEventListener('loadedmetadata', restoreProgress);
   }, [video, progress]);
 
   if (!video) return null;
+
+  function startPlayback() {
+    tryStartPlayback({ mutedFallback: true, forceUnmute: true });
+  }
 
   function rememberProgress() {
     const player = playerRef.current;
@@ -342,31 +653,49 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
 
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={`Playing ${video.title}`}>
-      <div className="modal-backdrop" onClick={onClose} />
+      <div className="modal-backdrop" onClick={closePlayer} />
       <div className="player-shell">
         <div className="player-topline">
           <h2>{video.title} <span>({video.folderPathLabel})</span></h2>
-          <button className="close" onClick={onClose} aria-label="Close player">×</button>
+          <button className="close" onClick={closePlayer} aria-label="Close player">
+            <span aria-hidden="true">×</span>
+            <span className="close-label">Close</span>
+          </button>
         </div>
-        <video
-          ref={playerRef}
-          src={video.streamUrl}
-          poster={video.thumbnailUrl}
-          controls
-          autoPlay
-          playsInline
-          controlsList="nodownload noremoteplayback"
-          disablePictureInPicture
-          onTimeUpdate={rememberProgress}
-          onPause={rememberProgress}
-          onEnded={() => {
-            rememberProgress();
-            onEnded(video.id);
-          }}
-        />
+        <div className="player-video-wrap">
+          <video
+            ref={playerRef}
+            poster={video.thumbnailUrl}
+            controls
+            autoPlay
+            preload="metadata"
+            playsInline
+            controlsList="nodownload noremoteplayback"
+            disablePictureInPicture
+            onPlay={() => setShowPlayPrompt(false)}
+            onVolumeChange={(event) => {
+              if (!event.currentTarget.muted) setPlaybackStatus('');
+            }}
+            onTimeUpdate={rememberProgress}
+            onPause={rememberProgress}
+            onEnded={() => {
+              rememberProgress();
+              onEnded(video.id);
+            }}
+          />
+          {showPlayPrompt ? (
+            <button className="player-play-overlay" onClick={startPlayback} type="button">
+              <span aria-hidden="true">▶</span>
+              <span>Play</span>
+            </button>
+          ) : null}
+        </div>
         <div className="player-footer">
-          <span>🛡 Google Drive Approved Folder Stream</span>
-          <span>Tip: Press Esc to close player</span>
+          <span>
+            🛡 Google Drive Approved Folder Stream · {playback.mode}
+            {playbackStatus ? ` · ${playbackStatus}` : ''}
+          </span>
+          <button className="player-close-btn" onClick={closePlayer} type="button">Back to library</button>
         </div>
       </div>
     </div>
@@ -402,6 +731,9 @@ function App() {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [collection, setCollection] = useState('all');
+  const [qualityFilter, setQualityFilter] = useState('all');
+  const [durationFilter, setDurationFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('title');
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [favorites, setFavorites] = useState(() => getJson(STORAGE_KEYS.favorites, []));
   const [progress, setProgress] = useState(() => getJson(STORAGE_KEYS.progress, {}));
@@ -450,8 +782,28 @@ function App() {
         if (filter === 'short') return video.durationMs && video.durationMs <= 20 * 60 * 1000;
         if (filter === 'hd') return video.isHd;
         return true;
+      })
+      .filter((video) => {
+        if (qualityFilter === 'hd') return video.isHd;
+        if (qualityFilter === 'sd') return !video.isHd;
+        return true;
+      })
+      .filter((video) => {
+        if (durationFilter === 'short') return video.durationMs && video.durationMs < 20 * 60 * 1000;
+        if (durationFilter === 'medium') return video.durationMs && video.durationMs >= 20 * 60 * 1000 && video.durationMs <= 45 * 60 * 1000;
+        if (durationFilter === 'long') return video.durationMs && video.durationMs > 45 * 60 * 1000;
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'newest') {
+          return new Date(b.modifiedTime || b.createdTime || 0) - new Date(a.modifiedTime || a.createdTime || 0);
+        }
+        if (sortBy === 'longest') return (b.durationMs || 0) - (a.durationMs || 0);
+        if (sortBy === 'shortest') return (a.durationMs || Number.MAX_SAFE_INTEGER) - (b.durationMs || Number.MAX_SAFE_INTEGER);
+        if (sortBy === 'largest') return (b.size || 0) - (a.size || 0);
+        return a.title.localeCompare(b.title, undefined, { numeric: true, sensitivity: 'base' });
       });
-  }, [scopedVideos, search, filter, favorites, progress]);
+  }, [scopedVideos, search, filter, qualityFilter, durationFilter, sortBy, favorites, progress]);
 
   const counts = useMemo(() => ({
     all: scopedVideos.length,
@@ -517,6 +869,24 @@ function App() {
         ) : (
           <>
             <Hero featured={featured} onPlay={setSelectedVideo} total={scopedVideos.length} />
+
+            <LibraryToolbar
+              filter={filter}
+              setFilter={setFilter}
+              collection={collection}
+              setCollection={setCollection}
+              collectionOptions={collectionOptions}
+              qualityFilter={qualityFilter}
+              setQualityFilter={setQualityFilter}
+              durationFilter={durationFilter}
+              setDurationFilter={setDurationFilter}
+              sortBy={sortBy}
+              setSortBy={setSortBy}
+              counts={counts}
+              visibleCount={filteredVideos.length}
+              search={search}
+              setSearch={setSearch}
+            />
             
             {parentUnlocked ? (
               <ParentPanel
@@ -549,4 +919,7 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')).render(<App />);
+const rootElement = document.getElementById('root');
+const root = rootElement._kidsCinemaRoot || createRoot(rootElement);
+rootElement._kidsCinemaRoot = root;
+root.render(<App />);
