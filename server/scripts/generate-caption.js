@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -9,6 +9,8 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverDir = path.resolve(__dirname, '..');
+dotenv.config({ path: path.join(serverDir, '.env') });
+
 const captionDir = path.join(serverDir, 'cache-captions');
 const tempDir = path.join(os.tmpdir(), 'kids-drive-captions');
 
@@ -44,8 +46,13 @@ function createAuth() {
     });
   }
 
+  const configuredKeyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  const keyFilename = configuredKeyFile && path.isAbsolute(configuredKeyFile)
+    ? configuredKeyFile
+    : configuredKeyFile ? path.join(serverDir, configuredKeyFile) : undefined;
+
   return new google.auth.GoogleAuth({
-    keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    keyFilename,
     scopes: SCOPES
   });
 }
