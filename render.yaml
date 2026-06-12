@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: drive-movies-cinema
+    name: kids-drive-cinema
     runtime: docker
     plan: free
     region: oregon
