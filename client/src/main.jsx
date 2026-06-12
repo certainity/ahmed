@@ -841,17 +841,7 @@ function WatchPlayer({
               rememberProgress();
               onEnded(video.id);
             }}
-          >
-            {video.captionsReady && video.captionUrl ? (
-              <track
-                kind="captions"
-                src={video.captionUrl}
-                srcLang="en"
-                label="English"
-                default
-              />
-            ) : null}
-          </video>
+          />
           {showPlayPrompt ? (
             <button className="player-play-overlay" onClick={startPlayback} type="button">
               <span aria-hidden="true">▶</span>
