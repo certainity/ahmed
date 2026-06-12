@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import Hls from 'hls.js';
 import './styles.css';
 
 const STORAGE_KEYS = {
@@ -82,20 +81,10 @@ function getThumbnailStyle(video) {
 }
 
 function getPlaybackSource(video) {
-  if (video.directPlayable) {
-    return {
-      src: video.streamUrl,
-      mode: 'Direct browser playback',
-      type: video.mimeType || 'video/mp4',
-      hls: false
-    };
-  }
-
   return {
-    src: video.hlsUrl || video.transcodeUrl || video.streamUrl,
-    mode: 'Compatibility playback',
-    type: 'application/vnd.apple.mpegurl',
-    hls: true
+    src: video.streamUrl,
+    mode: video.directPlayable ? 'Direct browser playback' : 'Direct Drive stream',
+    type: video.mimeType || 'video/mp4'
   };
 }
 
@@ -571,46 +560,11 @@ function PlayerModal({ video, onClose, onEnded, progress, setProgress }) {
     const player = playerRef.current;
     if (!player || !video || !playback) return undefined;
 
-    setPlaybackStatus(playback.hls ? 'Preparing compatibility stream...' : '');
+    setPlaybackStatus('');
     setShowPlayPrompt(false);
-
-    if (playback.hls) {
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          backBufferLength: 30,
-          maxBufferLength: 30
-        });
-
-        hls.loadSource(playback.src);
-        hls.attachMedia(player);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setPlaybackStatus('');
-          tryStartPlayback({ mutedFallback: true });
-        });
-        hls.on(Hls.Events.ERROR, (_event, data) => {
-          if (data.fatal) {
-            setPlaybackStatus('Playback needs a new stream. Please reopen this video.');
-            setShowPlayPrompt(true);
-          }
-        });
-
-        return () => {
-          hls.destroy();
-        };
-      }
-
-      if (player.canPlayType('application/vnd.apple.mpegurl')) {
-        player.src = playback.src;
-        player.load();
-        setPlaybackStatus('');
-        tryStartPlayback({ mutedFallback: true });
-        return undefined;
-      }
-    }
 
     player.src = playback.src;
     player.load();
-    setPlaybackStatus('');
     tryStartPlayback();
     return undefined;
   }, [video, playback]);

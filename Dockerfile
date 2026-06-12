@@ -8,8 +8,6 @@ RUN npm run build --prefix client
 
 # Step 2: Set up the production server environment
 FROM node:20-alpine
-# Install ffmpeg for thumbnail generation
-RUN apk add --no-cache ffmpeg
 
 WORKDIR /app
 

@@ -13,14 +13,9 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-import { spawn } from 'node:child_process';
 const CACHE_DIR = path.resolve(__dirname, 'cache-thumbnails');
 if (!fs.existsSync(CACHE_DIR)) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });
-}
-const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
-if (!fs.existsSync(HLS_CACHE_DIR)) {
-  fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
 
 const PORT = Number(process.env.PORT || 5174);
@@ -80,7 +75,6 @@ let videoCache = {
   folderCount: 0,
   warnings: []
 };
-const hlsJobs = new Map();
 
 function ensureFolderConfigured() {
   if (!DRIVE_FOLDER_ID || DRIVE_FOLDER_ID.includes('PASTE_')) {
@@ -144,8 +138,6 @@ function normalizeVideo(file, folderContext) {
     folderPathLabel,
     depth: folderContext.depth || 0,
     streamUrl: `/api/stream/${file.id}`,
-    transcodeUrl: `/api/transcode/${file.id}`,
-    hlsUrl: `/api/hls/${file.id}/index.m3u8`,
     directPlayable: isBrowserNativeVideo(file),
     thumbnailUrl: `/api/thumbnails/${file.id}?v=${encodeURIComponent(file.modifiedTime || '')}`,
     _thumbnailLink: file.thumbnailLink || null
@@ -327,110 +319,6 @@ function parseRangeHeader(rangeHeader, fileSize) {
   return { start, end };
 }
 
-function hlsPathsFor(videoId) {
-  const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
-  const dir = path.join(HLS_CACHE_DIR, safeId);
-  return {
-    dir,
-    playlist: path.join(dir, 'index.m3u8'),
-    segmentPattern: path.join(dir, 'segment-%05d.ts')
-  };
-}
-
-function waitForFile(filePath, timeoutMs = 20000) {
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      if (fs.existsSync(filePath)) {
-        resolve(true);
-        return;
-      }
-      if (Date.now() - startedAt > timeoutMs) {
-        reject(new Error(`Timed out waiting for ${path.basename(filePath)}.`));
-        return;
-      }
-      setTimeout(check, 250);
-    };
-    check();
-  });
-}
-
-async function ensureHlsJob(video) {
-  const paths = hlsPathsFor(video.id);
-  if (fs.existsSync(paths.playlist)) return paths;
-
-  const existing = hlsJobs.get(video.id);
-  if (existing && existing.status === 'running') return paths;
-  if (existing && existing.status === 'failed') {
-    fs.rmSync(paths.dir, { recursive: true, force: true });
-  }
-
-  fs.mkdirSync(paths.dir, { recursive: true });
-  const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
-  const headers = await authHeadersFor(driveUrl);
-  const response = await fetch(driveUrl, { headers });
-
-  if (!response.ok || !response.body) {
-    const details = await response.text().catch(() => '');
-    const err = new Error(`Google Drive HLS source failed with ${response.status}. ${details}`.trim());
-    err.status = response.status || 502;
-    throw err;
-  }
-
-  const ffmpeg = spawn('ffmpeg', [
-    '-hide_banner',
-    '-loglevel', 'error',
-    '-probesize', '1M',
-    '-analyzeduration', '1M',
-    '-i', 'pipe:0',
-    '-map', '0:v:0',
-    '-map', '0:a:0?',
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-tune', 'zerolatency',
-    '-crf', '30',
-    '-vf', 'scale=-2:720',
-    '-pix_fmt', 'yuv420p',
-    '-threads', '0',
-    '-c:a', 'aac',
-    '-b:a', '96k',
-    '-ac', '2',
-    '-f', 'hls',
-    '-hls_time', '4',
-    '-hls_list_size', '0',
-    '-hls_flags', 'independent_segments+temp_file',
-    '-hls_segment_filename', paths.segmentPattern,
-    paths.playlist
-  ]);
-
-  const upstream = Readable.fromWeb(response.body);
-  upstream.pipe(ffmpeg.stdin);
-
-  hlsJobs.set(video.id, { status: 'running', ffmpeg, upstream, startedAt: Date.now() });
-
-  ffmpeg.stdin.on('error', (error) => {
-    if (error.code !== 'EPIPE') {
-      console.error('ffmpeg HLS stdin error:', error);
-    }
-  });
-
-  ffmpeg.on('error', (error) => {
-    hlsJobs.set(video.id, { status: 'failed', error, startedAt: Date.now() });
-    upstream.destroy();
-  });
-
-  ffmpeg.on('close', (code) => {
-    upstream.destroy();
-    hlsJobs.set(video.id, {
-      status: code === 0 ? 'complete' : 'failed',
-      code,
-      startedAt: Date.now()
-    });
-  });
-
-  return paths;
-}
-
 async function authHeadersFor(url) {
   if (typeof auth.getClient === 'function') {
     const client = await auth.getClient();
@@ -560,53 +448,7 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
       }
     }
 
-    // 3. Fallback to extracting using ffmpeg for videos without a thumbnail (like .mkv)
-    try {
-      if (!video.canDownload) {
-        return sendPlaceholderThumbnail(res, video.title);
-      }
-
-      const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
-      const headers = await authHeadersFor(driveUrl);
-
-      const response = await fetch(driveUrl, { headers });
-      if (!response.ok || !response.body) {
-        return sendPlaceholderThumbnail(res, video.title);
-      }
-
-      const ffmpeg = spawn('ffmpeg', [
-        '-i', 'pipe:0',
-        '-ss', '10',
-        '-vframes', '1',
-        '-f', 'image2',
-        '-y',
-        cachePath
-      ]);
-
-      ffmpeg.stdin.on('error', (err) => {
-        if (err.code !== 'EPIPE') {
-          console.error('ffmpeg stdin error during thumbnail extraction:', err);
-        }
-      });
-
-      const nodeStream = Readable.fromWeb(response.body);
-      nodeStream.pipe(ffmpeg.stdin);
-
-      ffmpeg.on('close', (code) => {
-        if (code === 0 && fs.existsSync(cachePath)) {
-          res.status(200).set({
-            'Content-Type': 'image/jpeg',
-            'Cache-Control': 'private, max-age=86400'
-          });
-          fs.createReadStream(cachePath).pipe(res);
-        } else {
-          sendPlaceholderThumbnail(res, video.title);
-        }
-      });
-    } catch (ffmpegErr) {
-      console.error('Error extracting thumbnail with ffmpeg:', ffmpegErr);
-      sendPlaceholderThumbnail(res, video.title);
-    }
+    return sendPlaceholderThumbnail(res, video.title);
   } catch (error) {
     next(error);
   }
@@ -665,140 +507,6 @@ app.get('/api/stream/:id', async (req, res, next) => {
     res.on('close', () => upstream.destroy());
     upstream.pipe(res);
   } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/hls/:id/index.m3u8', async (req, res, next) => {
-  try {
-    const video = await getAllowedVideo(req.params.id);
-
-    if (!video.canDownload) {
-      const err = new Error('This file cannot be downloaded/streamed from Google Drive.');
-      err.status = 403;
-      throw err;
-    }
-
-    const paths = await ensureHlsJob(video);
-    await waitForFile(paths.playlist, 30000);
-
-    res.set({
-      'Content-Type': 'application/vnd.apple.mpegurl',
-      'Cache-Control': 'private, max-age=0, no-cache',
-      'X-Playback-Mode': 'hls'
-    });
-    res.sendFile(paths.playlist);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/hls/:id/:segment', async (req, res, next) => {
-  try {
-    await getAllowedVideo(req.params.id);
-
-    const segment = path.basename(String(req.params.segment || ''));
-    if (!/^segment-\d{5}\.ts$/.test(segment)) {
-      const err = new Error('Invalid HLS segment.');
-      err.status = 400;
-      throw err;
-    }
-
-    const paths = hlsPathsFor(req.params.id);
-    const segmentPath = path.join(paths.dir, segment);
-    await waitForFile(segmentPath, 15000);
-
-    res.set({
-      'Content-Type': 'video/mp2t',
-      'Cache-Control': 'private, max-age=3600'
-    });
-    res.sendFile(segmentPath);
-  } catch (error) {
-    next(error);
-  }
-});
-
-app.get('/api/transcode/:id', async (req, res, next) => {
-  let ffmpeg;
-  let upstream;
-
-  try {
-    const video = await getAllowedVideo(req.params.id);
-
-    if (!video.canDownload) {
-      const err = new Error('This file cannot be downloaded/streamed from Google Drive.');
-      err.status = 403;
-      throw err;
-    }
-
-    const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
-    const headers = await authHeadersFor(driveUrl);
-    const response = await fetch(driveUrl, { headers });
-
-    if (!response.ok || !response.body) {
-      const details = await response.text().catch(() => '');
-      const err = new Error(`Google Drive transcode source failed with ${response.status}. ${details}`.trim());
-      err.status = response.status || 502;
-      throw err;
-    }
-
-    res.status(200).set({
-      'Content-Type': 'video/mp4',
-      'Cache-Control': 'private, max-age=0, no-transform',
-      'X-Playback-Mode': 'transcoded'
-    });
-
-    ffmpeg = spawn('ffmpeg', [
-      '-hide_banner',
-      '-loglevel', 'error',
-      '-probesize', '1M',
-      '-analyzeduration', '1M',
-      '-i', 'pipe:0',
-      '-map', '0:v:0',
-      '-map', '0:a:0?',
-      '-c:v', 'libx264',
-      '-preset', 'ultrafast',
-      '-tune', 'zerolatency',
-      '-crf', '30',
-      '-vf', 'scale=-2:720',
-      '-pix_fmt', 'yuv420p',
-      '-threads', '0',
-      '-c:a', 'aac',
-      '-b:a', '96k',
-      '-ac', '2',
-      '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
-      '-f', 'mp4',
-      'pipe:1'
-    ]);
-
-    upstream = Readable.fromWeb(response.body);
-    upstream.pipe(ffmpeg.stdin);
-    ffmpeg.stdout.pipe(res);
-
-    ffmpeg.stdin.on('error', (error) => {
-      if (error.code !== 'EPIPE') {
-        console.error('ffmpeg transcode stdin error:', error);
-      }
-    });
-
-    ffmpeg.on('error', (error) => {
-      if (!res.headersSent) next(error);
-      else res.destroy(error);
-    });
-
-    ffmpeg.on('close', (code) => {
-      if (code && !res.destroyed) {
-        res.destroy(new Error(`ffmpeg transcode exited with ${code}`));
-      }
-    });
-
-    res.on('close', () => {
-      if (upstream) upstream.destroy();
-      if (ffmpeg && !ffmpeg.killed) ffmpeg.kill('SIGKILL');
-    });
-  } catch (error) {
-    if (upstream) upstream.destroy();
-    if (ffmpeg && !ffmpeg.killed) ffmpeg.kill('SIGKILL');
     next(error);
   }
 });
