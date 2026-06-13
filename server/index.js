@@ -31,6 +31,10 @@ const MOVIE_DRIVE_FOLDER_ID = process.env.MOVIE_DRIVE_FOLDER_ID || '1ECrt0eLyv1w
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STREAM_CHUNK_SIZE = Math.max(1024 * 1024, Number(process.env.STREAM_CHUNK_SIZE || 8 * 1024 * 1024));
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+const THUMBNAIL_CONCURRENCY = Math.max(1, Number(process.env.THUMBNAIL_CONCURRENCY || 1));
+const THUMBNAIL_WAIT_MS = Math.max(0, Number(process.env.THUMBNAIL_WAIT_MS || 7000));
+const THUMBNAIL_TIMEOUT_MS = Math.max(5000, Number(process.env.THUMBNAIL_TIMEOUT_MS || 45000));
+const THUMBNAIL_SEEK_SECONDS = Math.max(0, Number(process.env.THUMBNAIL_SEEK_SECONDS || 8));
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -87,6 +91,9 @@ const libraryConfig = {
 const videoCaches = new Map();
 
 const hlsJobs = new Map();
+const thumbnailJobs = new Map();
+const thumbnailQueue = [];
+let activeThumbnailJobs = 0;
 
 function emptyCache() {
   return {
@@ -211,6 +218,12 @@ function getHlsPaths(libraryKey, videoId) {
   };
 }
 
+function getThumbnailPath(libraryKey, videoId) {
+  const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
+  const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
+  return path.join(CACHE_DIR, `${safeLibrary}-${safeId}.jpg`);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -327,6 +340,122 @@ async function ensureHlsTranscode(libraryKey, video) {
   });
 
   return paths;
+}
+
+function runNextThumbnailJob() {
+  if (activeThumbnailJobs >= THUMBNAIL_CONCURRENCY) return;
+  const nextJob = thumbnailQueue.shift();
+  if (!nextJob) return;
+
+  activeThumbnailJobs += 1;
+  nextJob().finally(() => {
+    activeThumbnailJobs -= 1;
+    runNextThumbnailJob();
+  });
+}
+
+function enqueueThumbnailJob(jobKey, runJob) {
+  const existingJob = thumbnailJobs.get(jobKey);
+  if (existingJob) return existingJob;
+
+  let resolveJob;
+  let rejectJob;
+  const jobPromise = new Promise((resolve, reject) => {
+    resolveJob = resolve;
+    rejectJob = reject;
+  });
+  thumbnailJobs.set(jobKey, jobPromise);
+
+  thumbnailQueue.push(async () => {
+    try {
+      const result = await runJob();
+      resolveJob(result);
+    } catch (error) {
+      rejectJob(error);
+    } finally {
+      thumbnailJobs.delete(jobKey);
+    }
+  });
+  runNextThumbnailJob();
+
+  return jobPromise;
+}
+
+function waitForPromise(promise, timeoutMs) {
+  if (!timeoutMs) return Promise.resolve(false);
+  return Promise.race([
+    promise.then(() => true, () => false),
+    sleep(timeoutMs).then(() => false)
+  ]);
+}
+
+async function ensureGeneratedThumbnail(libraryKey, video, cachePath) {
+  if (fs.existsSync(cachePath)) return cachePath;
+  if (!video.canDownload) {
+    const err = new Error('Video cannot be downloaded for thumbnail generation.');
+    err.status = 403;
+    throw err;
+  }
+
+  const jobKey = `${libraryKey}:${video.id}`;
+  return enqueueThumbnailJob(jobKey, async () => {
+    if (fs.existsSync(cachePath)) return cachePath;
+
+    const tempPath = `${cachePath}.${Date.now()}.tmp.jpg`;
+    const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
+    const headers = await authHeadersFor(driveUrl);
+    const args = [
+      '-hide_banner',
+      '-loglevel', 'error',
+      '-y',
+      '-ss', String(THUMBNAIL_SEEK_SECONDS),
+      '-headers', ffmpegHeaderString(headers),
+      '-reconnect', '1',
+      '-reconnect_streamed', '1',
+      '-reconnect_delay_max', '5',
+      '-i', driveUrl,
+      '-map', '0:v:0',
+      '-frames:v', '1',
+      '-vf', 'scale=640:-2',
+      '-q:v', '4',
+      tempPath
+    ];
+
+    await new Promise((resolve, reject) => {
+      const child = spawn(FFMPEG_PATH, args, {
+        windowsHide: true,
+        stdio: ['ignore', 'ignore', 'pipe']
+      });
+      let stderr = '';
+      const timeout = setTimeout(() => {
+        child.kill('SIGKILL');
+      }, THUMBNAIL_TIMEOUT_MS);
+
+      child.stderr.on('data', (chunk) => {
+        stderr += chunk.toString();
+        if (stderr.length > 4000) stderr = stderr.slice(-4000);
+      });
+
+      child.on('error', (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+
+      child.on('exit', (code) => {
+        clearTimeout(timeout);
+        if (code === 0 && fs.existsSync(tempPath) && fs.statSync(tempPath).size > 0) {
+          fs.renameSync(tempPath, cachePath);
+          resolve();
+          return;
+        }
+
+        fs.rmSync(tempPath, { force: true });
+        reject(new Error(`Thumbnail ffmpeg failed for ${video.id} with code ${code}: ${stderr}`));
+      });
+    });
+
+    return cachePath;
+  });
 }
 
 async function listDriveChildren(parentFolderId) {
@@ -512,7 +641,7 @@ async function authHeadersFor(url) {
   throw err;
 }
 
-function sendPlaceholderThumbnail(res, title = 'Movie') {
+function sendPlaceholderThumbnail(res, title = 'Movie', status = 'placeholder') {
   const safeTitle = String(title).replace(/[<&>"']/g, '');
   const words = safeTitle.split(/\s+/).slice(0, 4).join(' ');
   const svg = `
@@ -533,7 +662,8 @@ function sendPlaceholderThumbnail(res, title = 'Movie') {
 
   res.status(200).set({
     'Content-Type': 'image/svg+xml; charset=utf-8',
-    'Cache-Control': 'private, max-age=300'
+    'Cache-Control': 'private, max-age=60',
+    'X-Thumbnail-Status': status
   }).send(svg);
 }
 
@@ -593,7 +723,7 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
     const video = await getAllowedVideo(req.params.id, libraryKey);
-    const cachePath = path.join(CACHE_DIR, `${video.id}.jpg`);
+    const cachePath = getThumbnailPath(libraryKey, video.id);
 
     // 1. Check if cached thumbnail exists
     if (fs.existsSync(cachePath)) {
@@ -632,7 +762,23 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
       }
     }
 
-    return sendPlaceholderThumbnail(res, video.title);
+    try {
+      const thumbnailJob = ensureGeneratedThumbnail(libraryKey, video, cachePath);
+      const ready = await waitForPromise(thumbnailJob, THUMBNAIL_WAIT_MS);
+      if (ready && fs.existsSync(cachePath)) {
+        res.status(200).set({
+          'Content-Type': 'image/jpeg',
+          'Cache-Control': 'private, max-age=86400',
+          'X-Thumbnail-Status': 'generated'
+        });
+        return fs.createReadStream(cachePath).pipe(res);
+      }
+
+      return sendPlaceholderThumbnail(res, video.title, 'generating');
+    } catch (err) {
+      console.error('Error generating video thumbnail:', err);
+      return sendPlaceholderThumbnail(res, video.title, 'placeholder');
+    }
   } catch (error) {
     next(error);
   }
