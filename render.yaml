@@ -22,6 +22,14 @@ services:
         value: 750
       - key: CACHE_TTL_MS
         value: 300000
+      - key: HLS_START_SEGMENTS
+        value: 4
+      - key: HLS_START_TIMEOUT_MS
+        value: 12000
+      - key: HLS_BUFFER_TIMEOUT_MS
+        value: 8000
+      - key: HLS_PREWARM_MAX_ACTIVE
+        value: 1
       - key: CLIENT_ORIGIN
         value: '*'
       - key: GOOGLE_CLIENT_EMAIL

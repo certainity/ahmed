@@ -788,7 +788,19 @@ function WatchPlayer({
         }
 
         if (data?.fatal) {
-          setPlaybackStatus('Preparing audio-compatible stream. Try again in a moment.');
+          setPlaybackStatus('Reconnecting stream...');
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            window.clearTimeout(retryTimeout);
+            retryTimeout = window.setTimeout(() => {
+              hls.loadSource(playback.src);
+            }, 2500);
+            return;
+          }
+          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            hls.recoverMediaError();
+            return;
+          }
+          setPlaybackStatus('Preparing audio-compatible stream...');
         }
       });
       return () => {

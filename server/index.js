@@ -36,6 +36,9 @@ const THUMBNAIL_WAIT_MS = Math.max(0, Number(process.env.THUMBNAIL_WAIT_MS || 70
 const THUMBNAIL_TIMEOUT_MS = Math.max(5000, Number(process.env.THUMBNAIL_TIMEOUT_MS || 45000));
 const THUMBNAIL_SEEK_SECONDS = Math.max(0, Number(process.env.THUMBNAIL_SEEK_SECONDS || 8));
 const HLS_PREWARM_MAX_ACTIVE = Math.max(0, Number(process.env.HLS_PREWARM_MAX_ACTIVE || 1));
+const HLS_START_SEGMENTS = Math.max(2, Number(process.env.HLS_START_SEGMENTS || 4));
+const HLS_START_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_START_TIMEOUT_MS || 12000));
+const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEOUT_MS || 8000));
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -253,7 +256,7 @@ function isHlsComplete(paths) {
 function getRequiredHlsSegments(req) {
   const requestedStart = Number(req.query.start || 0);
   const startSeconds = Number.isFinite(requestedStart) && requestedStart > 0 ? requestedStart : 0;
-  const initialSegments = Number(process.env.HLS_START_SEGMENTS || 24);
+  const initialSegments = HLS_START_SEGMENTS;
   if (!startSeconds) return initialSegments;
 
   const resumeBufferSeconds = Number(process.env.HLS_RESUME_BUFFER_SECONDS || 120);
@@ -854,7 +857,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const paths = await ensureHlsTranscode(libraryKey, video);
-    const ready = await waitForFile(paths.playlist, Number(process.env.HLS_START_TIMEOUT_MS || 25000));
+    const ready = await waitForFile(paths.playlist, HLS_START_TIMEOUT_MS);
     if (!ready) {
       res.status(202).json({
         status: 'preparing',
@@ -867,7 +870,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     const bufferReady = await waitForHlsBuffer(
       paths,
       requiredSegments,
-      Number(process.env.HLS_BUFFER_TIMEOUT_MS || 25000)
+      HLS_BUFFER_TIMEOUT_MS
     );
     if (!bufferReady) {
       res.status(202).json({
@@ -904,7 +907,7 @@ app.post('/api/hls/:id/prewarm', async (req, res, next) => {
     const paths = getHlsPaths(libraryKey, video.id);
     const jobKey = `${libraryKey}:${video.id}`;
     const segmentsReady = countHlsSegments(paths);
-    if (isHlsComplete(paths) || segmentsReady >= Number(process.env.HLS_START_SEGMENTS || 24)) {
+    if (isHlsComplete(paths) || segmentsReady >= HLS_START_SEGMENTS) {
       res.json({
         status: 'ready',
         segmentsReady,
