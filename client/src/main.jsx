@@ -36,6 +36,75 @@ function apiUrl(path) {
   return API_ORIGIN ? url.href : `${url.pathname}${url.search}${url.hash}`;
 }
 
+const hlsPrewarmAttempts = new Map();
+const HLS_PREWARM_RETRY_MS = 60 * 1000;
+
+function prewarmUrlFor(video) {
+  if (!video?.hlsUrl || video.directPlayable) return null;
+  const url = new URL(video.hlsUrl, window.location.origin);
+  url.pathname = url.pathname.replace(/\/master\.m3u8$/, '/prewarm');
+  return API_ORIGIN ? url.href : `${url.pathname}${url.search}${url.hash}`;
+}
+
+function uniqueHlsVideos(videos, limit = 4) {
+  const seen = new Set();
+  const now = Date.now();
+  return videos
+    .filter(Boolean)
+    .filter((video) => video.hlsUrl && !video.directPlayable)
+    .filter((video) => {
+      if (seen.has(video.id)) return false;
+      seen.add(video.id);
+      const lastAttempt = hlsPrewarmAttempts.get(video.id) || 0;
+      return now - lastAttempt > HLS_PREWARM_RETRY_MS;
+    })
+    .slice(0, limit);
+}
+
+function useHlsPrewarm(candidates, limit = 4) {
+  const ids = candidates.map((video) => video?.id).filter(Boolean).join('|');
+
+  useEffect(() => {
+    const videos = uniqueHlsVideos(candidates, limit);
+    if (!videos.length) return undefined;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function runPrewarmQueue() {
+      for (const video of videos) {
+        if (cancelled) break;
+        const url = prewarmUrlFor(video);
+        if (!url) continue;
+
+        hlsPrewarmAttempts.set(video.id, Date.now());
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            signal: controller.signal,
+            cache: 'no-store'
+          });
+          if (response.status === 202) {
+            const payload = await response.json().catch(() => ({}));
+            if (payload.status === 'busy') {
+              hlsPrewarmAttempts.delete(video.id);
+              break;
+            }
+          }
+        } catch {
+          if (!cancelled) hlsPrewarmAttempts.delete(video.id);
+        }
+      }
+    }
+
+    runPrewarmQueue();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [ids, limit]);
+}
+
 function normalizeApiVideo(video) {
   return {
     ...video,
@@ -1032,6 +1101,24 @@ function App() {
     () => getAdjacentFolderVideos(selectedVideo, videos),
     [selectedVideo, videos]
   );
+
+  const hlsPrewarmCandidates = useMemo(() => {
+    if (selectedVideo) {
+      return [
+        selectedVideo,
+        watchNavigation.nextVideo,
+        watchNavigation.previousVideo,
+        ...recommendedVideos.slice(0, 3)
+      ];
+    }
+
+    return [
+      featured,
+      ...filteredVideos.slice(0, 5)
+    ];
+  }, [selectedVideo, watchNavigation, recommendedVideos, featured, filteredVideos]);
+
+  useHlsPrewarm(hlsPrewarmCandidates, selectedVideo ? 4 : 3);
 
   function leaveWatchPage() {
     setSelectedVideo(null);

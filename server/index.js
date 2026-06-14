@@ -35,6 +35,7 @@ const THUMBNAIL_CONCURRENCY = Math.max(1, Number(process.env.THUMBNAIL_CONCURREN
 const THUMBNAIL_WAIT_MS = Math.max(0, Number(process.env.THUMBNAIL_WAIT_MS || 7000));
 const THUMBNAIL_TIMEOUT_MS = Math.max(5000, Number(process.env.THUMBNAIL_TIMEOUT_MS || 45000));
 const THUMBNAIL_SEEK_SECONDS = Math.max(0, Number(process.env.THUMBNAIL_SEEK_SECONDS || 8));
+const HLS_PREWARM_MAX_ACTIVE = Math.max(0, Number(process.env.HLS_PREWARM_MAX_ACTIVE || 1));
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -885,6 +886,58 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       'Content-Type': 'application/vnd.apple.mpegurl',
       'Cache-Control': 'no-store'
     }).send(playlist);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/hls/:id/prewarm', async (req, res, next) => {
+  try {
+    const libraryKey = getLibraryKey(req);
+    const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
+    if (!video.canDownload) {
+      const err = new Error('This file cannot be transcoded from Google Drive.');
+      err.status = 403;
+      throw err;
+    }
+
+    const paths = getHlsPaths(libraryKey, video.id);
+    const jobKey = `${libraryKey}:${video.id}`;
+    const segmentsReady = countHlsSegments(paths);
+    if (isHlsComplete(paths) || segmentsReady >= Number(process.env.HLS_START_SEGMENTS || 24)) {
+      res.json({
+        status: 'ready',
+        segmentsReady,
+        complete: isHlsComplete(paths)
+      });
+      return;
+    }
+
+    if (hlsJobs.has(jobKey)) {
+      res.status(202).json({
+        status: 'preparing',
+        segmentsReady,
+        activeJobs: hlsJobs.size
+      });
+      return;
+    }
+
+    if (HLS_PREWARM_MAX_ACTIVE === 0 || hlsJobs.size >= HLS_PREWARM_MAX_ACTIVE) {
+      res.status(202).json({
+        status: 'busy',
+        message: 'HLS prewarm skipped because another stream is already preparing.',
+        segmentsReady,
+        activeJobs: hlsJobs.size
+      });
+      return;
+    }
+
+    await ensureHlsTranscode(libraryKey, video);
+    res.status(202).json({
+      status: 'started',
+      segmentsReady: countHlsSegments(paths),
+      activeJobs: hlsJobs.size
+    });
   } catch (error) {
     next(error);
   }
