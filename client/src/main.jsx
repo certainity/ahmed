@@ -928,6 +928,10 @@ function WatchPage({
   previousVideo,
   nextVideo,
   onBack,
+  onHome,
+  collection,
+  collectionOptions,
+  onSelectCollection,
   onSelectVideo,
   onEnded,
   onPrevious,
@@ -939,6 +943,25 @@ function WatchPage({
 }) {
   return (
     <section className="watch-page">
+      <nav className="watch-nav" aria-label="Watch page navigation">
+        <button className="watch-home-btn" type="button" onClick={onHome}>
+          Home
+        </button>
+        <label className="watch-folder-picker">
+          <span>Folders</span>
+          <select
+            value={collection}
+            onChange={(event) => onSelectCollection(event.target.value)}
+          >
+            {collectionOptions.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.label} ({item.count})
+              </option>
+            ))}
+          </select>
+        </label>
+      </nav>
+
       <WatchPlayer
         video={video}
         onClose={onBack}
@@ -1259,6 +1282,10 @@ function App() {
                 previousVideo={watchNavigation.previousVideo}
                 nextVideo={watchNavigation.nextVideo}
                 onBack={() => setSelectedVideo(null)}
+                onHome={showLibraryHome}
+                collection={collection}
+                collectionOptions={collectionOptions}
+                onSelectCollection={updateCollection}
                 onSelectVideo={openVideo}
                 onEnded={playNextVideo}
                 onPrevious={playPreviousVideo}
