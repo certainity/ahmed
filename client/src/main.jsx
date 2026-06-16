@@ -686,6 +686,7 @@ function WatchPlayer({
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [drivePreviewMode, setDrivePreviewMode] = useState(false);
   const showDrivePreview = Boolean(playbackStatus && video?.drivePreviewUrl);
 
   function tryStartPlayback() {
@@ -734,6 +735,19 @@ function WatchPlayer({
     window.setTimeout(() => tryStartPlayback(), 80);
   }
 
+  function openDrivePreview() {
+    const player = playerRef.current;
+    if (player) {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+    }
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    setDrivePreviewMode(true);
+    setPlaybackStatus('Playing with Google Drive preview.');
+  }
+
   useEffect(() => {
     function onKeyDown(event) {
       if (event.key !== 'Escape') return;
@@ -758,10 +772,11 @@ function WatchPlayer({
 
   useEffect(() => {
     const player = playerRef.current;
+    setDrivePreviewMode(false);
     if (!player || !video || !playback) return undefined;
 
-      setPlaybackStatus('');
-      hlsRef.current?.destroy();
+    setPlaybackStatus('');
+    hlsRef.current?.destroy();
     hlsRef.current = null;
 
     player.muted = false;
@@ -874,31 +889,41 @@ function WatchPlayer({
           </button>
         </div>
         <div className="player-video-wrap">
-          <video
-            ref={playerRef}
-            poster={video.thumbnailUrl}
-            controls
-            autoPlay
-            preload="metadata"
-            playsInline
-            controlsList="nodownload nofullscreen noremoteplayback"
-            disablePictureInPicture
-            onPlay={() => setPlaybackStatus('')}
-            onError={() => {
-              if (!playback?.hls) {
-                setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
-              }
-            }}
-            onVolumeChange={(event) => {
-              if (!event.currentTarget.muted) setPlaybackStatus('');
-            }}
-            onTimeUpdate={rememberProgress}
-            onPause={rememberProgress}
-            onEnded={() => {
-              rememberProgress();
-              onEnded(video.id);
-            }}
-          />
+          {drivePreviewMode && video.drivePreviewUrl ? (
+            <iframe
+              className="drive-preview-frame"
+              src={video.drivePreviewUrl}
+              title={`Google Drive preview for ${video.title}`}
+              allow="autoplay; fullscreen"
+              allowFullScreen
+            />
+          ) : (
+            <video
+              ref={playerRef}
+              poster={video.thumbnailUrl}
+              controls
+              autoPlay
+              preload="metadata"
+              playsInline
+              controlsList="nodownload nofullscreen noremoteplayback"
+              disablePictureInPicture
+              onPlay={() => setPlaybackStatus('')}
+              onError={() => {
+                if (!playback?.hls) {
+                  setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
+                }
+              }}
+              onVolumeChange={(event) => {
+                if (!event.currentTarget.muted) setPlaybackStatus('');
+              }}
+              onTimeUpdate={rememberProgress}
+              onPause={rememberProgress}
+              onEnded={() => {
+                rememberProgress();
+                onEnded(video.id);
+              }}
+            />
+          )}
           {isFullscreen ? (
             <button className="fullscreen-exit-btn" onClick={toggleFullscreen} type="button">
               Exit
@@ -912,14 +937,13 @@ function WatchPlayer({
           </span>
           <div className="player-footer-actions">
             {showDrivePreview ? (
-              <a
+              <button
                 className="player-close-btn drive-preview-link"
-                href={video.drivePreviewUrl}
-                target="_blank"
-                rel="noreferrer"
+                onClick={openDrivePreview}
+                type="button"
               >
-                Try Drive Preview
-              </a>
+                Open Here
+              </button>
             ) : null}
             <button className="player-close-btn" onClick={toggleFullscreen} type="button">
               {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}

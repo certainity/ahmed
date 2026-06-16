@@ -1065,11 +1065,26 @@ input:focus-visible {
   object-fit: contain;
 }
 
+.drive-preview-frame {
+  display: block;
+  width: 100%;
+  height: min(75vh, calc(100vw * 9 / 16));
+  min-height: 360px;
+  border: 0;
+  background-color: #000;
+}
+
 .player-video-wrap:fullscreen video {
   width: 100vw;
   height: 100vh;
   max-height: none;
   aspect-ratio: auto;
+}
+
+.player-video-wrap:fullscreen .drive-preview-frame {
+  width: 100vw;
+  height: 100vh;
+  min-height: 0;
 }
 
 .player-play-overlay {
@@ -1419,12 +1434,25 @@ input:focus-visible {
     object-fit: contain;
   }
 
+  .drive-preview-frame {
+    width: 100%;
+    height: min(58vh, calc(100vw * 9 / 16));
+    min-height: 240px;
+  }
+
   .modal .player-shell video,
   .player-shell.fullscreen-mode video {
     flex: 1 1 auto;
     height: 100%;
     max-height: none;
     aspect-ratio: auto;
+  }
+
+  .modal .player-shell .drive-preview-frame,
+  .player-shell.fullscreen-mode .drive-preview-frame {
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
   }
 
   .player-footer {
