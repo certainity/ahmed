@@ -298,17 +298,15 @@ async function ensureHlsTranscode(libraryKey, video) {
   fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
-  const driveUrl = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(video.id)}?alt=media`;
-  const headers = await authHeadersFor(driveUrl);
+  const streamUrl = `http://127.0.0.1:${PORT}/api/stream/${encodeURIComponent(video.id)}?library=${encodeURIComponent(libraryKey)}`;
   const args = [
     '-hide_banner',
     '-loglevel', 'warning',
-    '-headers', ffmpegHeaderString(headers),
     '-reconnect', '1',
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-fflags', '+genpts',
-    '-i', driveUrl,
+    '-i', streamUrl,
     '-map', '0:v:0',
     '-map', '0:a:0?',
     '-c:v', 'libx264',
