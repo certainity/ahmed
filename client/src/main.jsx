@@ -890,13 +890,26 @@ function WatchPlayer({
         </div>
         <div className="player-video-wrap">
           {drivePreviewMode && video.drivePreviewUrl ? (
-            <iframe
-              className="drive-preview-frame"
-              src={video.drivePreviewUrl}
-              title={`Google Drive preview for ${video.title}`}
-              allow="autoplay; fullscreen"
-              allowFullScreen
-            />
+            <div className="drive-preview-shell">
+              <div className="drive-preview-toolbar">
+                <span>Google Drive preview</span>
+                <div>
+                  {video.driveViewUrl ? (
+                    <a href={video.driveViewUrl} target="_blank" rel="noreferrer">Open in Drive</a>
+                  ) : null}
+                  {video.driveDownloadUrl ? (
+                    <a href={video.driveDownloadUrl} target="_blank" rel="noreferrer">Download</a>
+                  ) : null}
+                </div>
+              </div>
+              <iframe
+                className="drive-preview-frame"
+                src={video.drivePreviewUrl}
+                title={`Google Drive preview for ${video.title}`}
+                allow="autoplay; fullscreen"
+                allowFullScreen
+              />
+            </div>
           ) : (
             <video
               ref={playerRef}
