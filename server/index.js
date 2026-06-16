@@ -97,6 +97,7 @@ const libraryConfig = {
 const videoCaches = new Map();
 
 const hlsJobs = new Map();
+const hlsLastErrors = new Map();
 const thumbnailJobs = new Map();
 const thumbnailQueue = [];
 let activeThumbnailJobs = 0;
@@ -352,13 +353,18 @@ async function ensureHlsTranscode(libraryKey, video) {
     clearTimeout(startTimeout);
     hlsJobs.delete(jobKey);
     if (code !== 0 && !fs.existsSync(paths.playlist)) {
-      console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
+      const message = `HLS transcode failed for ${video.id} with code ${code}: ${stderr || 'No ffmpeg output.'}`;
+      hlsLastErrors.set(jobKey, message.slice(-2000));
+      console.error(message);
+    } else {
+      hlsLastErrors.delete(jobKey);
     }
   });
 
   child.on('error', (error) => {
     clearTimeout(startTimeout);
     hlsJobs.delete(jobKey);
+    hlsLastErrors.set(jobKey, String(error?.message || error).slice(-2000));
     console.error(`Could not start ffmpeg for ${video.id}:`, error);
   });
 
@@ -878,9 +884,12 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     const paths = await ensureHlsTranscode(libraryKey, video);
     const ready = await waitForFile(paths.playlist, HLS_START_TIMEOUT_MS);
     if (!ready) {
+      const jobKey = `${libraryKey}:${video.id}`;
       res.status(202).json({
         status: 'preparing',
-        message: 'Preparing playable audio stream. Try play again in a few seconds.'
+        message: 'Preparing playable audio stream. Try play again in a few seconds.',
+        lastError: hlsLastErrors.get(jobKey) || null,
+        activeJobs: hlsJobs.size
       });
       return;
     }
