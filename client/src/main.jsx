@@ -686,6 +686,7 @@ function WatchPlayer({
   const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const showDrivePreview = Boolean(playbackStatus && video?.drivePreviewUrl);
 
   function tryStartPlayback() {
     const player = playerRef.current;
@@ -910,6 +911,16 @@ function WatchPlayer({
             {playbackStatus ? ` · ${playbackStatus}` : ''}
           </span>
           <div className="player-footer-actions">
+            {showDrivePreview ? (
+              <a
+                className="player-close-btn drive-preview-link"
+                href={video.drivePreviewUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Try Drive Preview
+              </a>
+            ) : null}
             <button className="player-close-btn" onClick={toggleFullscreen} type="button">
               {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             </button>

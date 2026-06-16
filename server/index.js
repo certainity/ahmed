@@ -197,6 +197,7 @@ function normalizeVideo(file, folderContext, libraryKey) {
     depth: folderContext.depth || 0,
     streamUrl: `/api/stream/${file.id}?library=${libraryKey}`,
     hlsUrl: `/api/hls/${file.id}/master.m3u8?library=${libraryKey}`,
+    drivePreviewUrl: `https://drive.google.com/file/d/${encodeURIComponent(file.id)}/preview`,
     directPlayable: isBrowserNativeVideo(file),
     thumbnailUrl: `/api/thumbnails/${file.id}?library=${libraryKey}&v=${encodeURIComponent(file.modifiedTime || '')}`,
     _thumbnailLink: file.thumbnailLink || null
