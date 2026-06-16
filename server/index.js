@@ -20,7 +20,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
-const HLS_CACHE_VERSION = 'v3';
+const HLS_CACHE_VERSION = 'v4';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
   fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
@@ -309,7 +309,12 @@ async function ensureHlsTranscode(libraryKey, video) {
     '-i', driveUrl,
     '-map', '0:v:0',
     '-map', '0:a:0?',
-    '-c:v', 'copy',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-tune', 'zerolatency',
+    '-crf', '30',
+    '-vf', 'scale=trunc(min(1280\\,iw)/2)*2:-2',
+    '-force_key_frames', 'expr:gte(t,n_forced*2)',
     '-c:a', 'aac',
     '-b:a', '128k',
     '-ac', '2',
