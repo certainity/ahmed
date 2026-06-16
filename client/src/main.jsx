@@ -38,9 +38,11 @@ function apiUrl(path) {
 
 const hlsPrewarmAttempts = new Map();
 const HLS_PREWARM_RETRY_MS = 60 * 1000;
+const HLS_PREWARM_MAX_BYTES = 1200 * 1024 * 1024;
 
 function prewarmUrlFor(video) {
   if (!video?.hlsUrl || video.directPlayable) return null;
+  if (!video.size || video.size > HLS_PREWARM_MAX_BYTES) return null;
   const url = new URL(video.hlsUrl, window.location.origin);
   url.pathname = url.pathname.replace(/\/master\.m3u8$/, '/prewarm');
   return API_ORIGIN ? url.href : `${url.pathname}${url.search}${url.hash}`;
@@ -52,6 +54,7 @@ function uniqueHlsVideos(videos, limit = 4) {
   return videos
     .filter(Boolean)
     .filter((video) => video.hlsUrl && !video.directPlayable)
+    .filter((video) => video.size && video.size <= HLS_PREWARM_MAX_BYTES)
     .filter((video) => {
       if (seen.has(video.id)) return false;
       seen.add(video.id);

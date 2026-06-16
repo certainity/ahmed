@@ -39,6 +39,8 @@ const HLS_PREWARM_MAX_ACTIVE = Math.max(0, Number(process.env.HLS_PREWARM_MAX_AC
 const HLS_START_SEGMENTS = Math.max(2, Number(process.env.HLS_START_SEGMENTS || 4));
 const HLS_START_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_START_TIMEOUT_MS || 12000));
 const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEOUT_MS || 8000));
+const HLS_JOB_START_TIMEOUT_MS = Math.max(15000, Number(process.env.HLS_JOB_START_TIMEOUT_MS || 90000));
+const HLS_PREWARM_MAX_BYTES = Math.max(50 * 1024 * 1024, Number(process.env.HLS_PREWARM_MAX_BYTES || 1200 * 1024 * 1024));
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -206,6 +208,11 @@ function isBrowserNativeVideo(file) {
   return mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'video/ogg';
 }
 
+function canPrewarmHls(video) {
+  const size = Number(video.size || 0);
+  return video.canDownload && size > 0 && size <= HLS_PREWARM_MAX_BYTES;
+}
+
 function publicVideo(video) {
   const { _thumbnailLink, ...safeVideo } = video;
   return safeVideo;
@@ -323,6 +330,11 @@ async function ensureHlsTranscode(libraryKey, video) {
   });
 
   let stderr = '';
+  const startTimeout = setTimeout(() => {
+    if (!fs.existsSync(paths.playlist)) {
+      child.kill('SIGKILL');
+    }
+  }, HLS_JOB_START_TIMEOUT_MS);
   child.stderr.on('data', (chunk) => {
     stderr += chunk.toString();
     if (stderr.length > 8000) stderr = stderr.slice(-8000);
@@ -332,6 +344,7 @@ async function ensureHlsTranscode(libraryKey, video) {
   hlsJobs.set(jobKey, job);
 
   child.on('exit', (code) => {
+    clearTimeout(startTimeout);
     hlsJobs.delete(jobKey);
     if (code !== 0 && !fs.existsSync(paths.playlist)) {
       console.error(`HLS transcode failed for ${video.id} with code ${code}: ${stderr}`);
@@ -339,6 +352,7 @@ async function ensureHlsTranscode(libraryKey, video) {
   });
 
   child.on('error', (error) => {
+    clearTimeout(startTimeout);
     hlsJobs.delete(jobKey);
     console.error(`Could not start ffmpeg for ${video.id}:`, error);
   });
@@ -902,6 +916,15 @@ app.post('/api/hls/:id/prewarm', async (req, res, next) => {
       const err = new Error('This file cannot be transcoded from Google Drive.');
       err.status = 403;
       throw err;
+    }
+
+    if (!canPrewarmHls(video)) {
+      res.status(202).json({
+        status: 'skipped',
+        message: 'HLS prewarm skipped for large files; it will start when the video is opened.',
+        size: video.size || null
+      });
+      return;
     }
 
     const paths = getHlsPaths(libraryKey, video.id);

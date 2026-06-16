@@ -30,6 +30,10 @@ services:
         value: 8000
       - key: HLS_PREWARM_MAX_ACTIVE
         value: 1
+      - key: HLS_PREWARM_MAX_BYTES
+        value: 1258291200
+      - key: HLS_JOB_START_TIMEOUT_MS
+        value: 90000
       - key: CLIENT_ORIGIN
         value: '*'
       - key: GOOGLE_CLIENT_EMAIL
