@@ -883,6 +883,11 @@ function WatchPlayer({
             controlsList="nodownload nofullscreen noremoteplayback"
             disablePictureInPicture
             onPlay={() => setPlaybackStatus('')}
+            onError={() => {
+              if (!playback?.hls) {
+                setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
+              }
+            }}
             onVolumeChange={(event) => {
               if (!event.currentTarget.muted) setPlaybackStatus('');
             }}

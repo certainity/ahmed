@@ -891,7 +891,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     if (!ready) {
       const jobKey = `${libraryKey}:${video.id}`;
       const lastError = hlsLastErrors.get(jobKey) || null;
-      const quotaExceeded = /downloadQuotaExceeded|download quota/i.test(lastError || '');
+      const quotaExceeded = /downloadQuotaExceeded|download quota|HTTP error 403 Forbidden/i.test(lastError || '');
       res.status(quotaExceeded ? 429 : 202).json({
         status: quotaExceeded ? 'quota_exceeded' : 'preparing',
         message: quotaExceeded
