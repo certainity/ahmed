@@ -282,9 +282,10 @@ async function waitForHlsBuffer(paths, minSegments, timeoutMs = 30000) {
 }
 
 function ffmpegHeaderString(headers) {
-  return Object.entries(headers)
+  const headerText = Object.entries(headers)
     .map(([key, value]) => `${key}: ${value}`)
     .join('\r\n');
+  return `${headerText}\r\n`;
 }
 
 async function ensureHlsTranscode(libraryKey, video) {
