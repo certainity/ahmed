@@ -39,6 +39,7 @@ function apiUrl(path) {
 const hlsPrewarmAttempts = new Map();
 const HLS_PREWARM_RETRY_MS = 60 * 1000;
 const HLS_PREWARM_MAX_BYTES = 1200 * 1024 * 1024;
+const ENABLE_HLS_PREWARM = false;
 
 function prewarmUrlFor(video) {
   if (!video?.hlsUrl || video.directPlayable) return null;
@@ -68,6 +69,7 @@ function useHlsPrewarm(candidates, limit = 4) {
   const ids = candidates.map((video) => video?.id).filter(Boolean).join('|');
 
   useEffect(() => {
+    if (!ENABLE_HLS_PREWARM) return undefined;
     const videos = uniqueHlsVideos(candidates, limit);
     if (!videos.length) return undefined;
 
@@ -778,6 +780,12 @@ function WatchPlayer({
         tryStartPlayback();
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        const responseCode = data?.response?.code || data?.networkDetails?.status || 0;
+        if (responseCode === 403 || responseCode === 429) {
+          setPlaybackStatus('Google Drive download quota is exceeded for this video. Try again later.');
+          return;
+        }
+
         if (
           (data?.type === Hls.ErrorTypes.NETWORK_ERROR && data?.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR) ||
           data?.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR

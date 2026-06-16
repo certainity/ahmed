@@ -41,6 +41,8 @@ const HLS_START_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_START_TIMEOUT
 const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEOUT_MS || 8000));
 const HLS_JOB_START_TIMEOUT_MS = Math.max(15000, Number(process.env.HLS_JOB_START_TIMEOUT_MS || 90000));
 const HLS_PREWARM_MAX_BYTES = Math.max(50 * 1024 * 1024, Number(process.env.HLS_PREWARM_MAX_BYTES || 1200 * 1024 * 1024));
+const ENABLE_HLS_PREWARM = String(process.env.ENABLE_HLS_PREWARM || 'false').toLowerCase() === 'true';
+const ENABLE_VIDEO_THUMBNAILS = String(process.env.ENABLE_VIDEO_THUMBNAILS || 'false').toLowerCase() === 'true';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
 const MAX_SCAN_DEPTH = Math.max(0, Number(process.env.MAX_SCAN_DEPTH || 8));
@@ -790,6 +792,10 @@ app.get('/api/thumbnails/:id', async (req, res, next) => {
       }
     }
 
+    if (!ENABLE_VIDEO_THUMBNAILS) {
+      return sendPlaceholderThumbnail(res, video.title, 'placeholder');
+    }
+
     try {
       const thumbnailJob = ensureGeneratedThumbnail(libraryKey, video, cachePath);
       const ready = await waitForPromise(thumbnailJob, THUMBNAIL_WAIT_MS);
@@ -884,10 +890,14 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     const ready = await waitForFile(paths.playlist, HLS_START_TIMEOUT_MS);
     if (!ready) {
       const jobKey = `${libraryKey}:${video.id}`;
-      res.status(202).json({
-        status: 'preparing',
-        message: 'Preparing playable audio stream. Try play again in a few seconds.',
-        lastError: hlsLastErrors.get(jobKey) || null,
+      const lastError = hlsLastErrors.get(jobKey) || null;
+      const quotaExceeded = /downloadQuotaExceeded|download quota/i.test(lastError || '');
+      res.status(quotaExceeded ? 429 : 202).json({
+        status: quotaExceeded ? 'quota_exceeded' : 'preparing',
+        message: quotaExceeded
+          ? 'Google Drive download quota is exceeded for this file. Try again later.'
+          : 'Preparing playable audio stream. Try play again in a few seconds.',
+        lastError,
         activeJobs: hlsJobs.size
       });
       return;
@@ -923,6 +933,14 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
 
 app.post('/api/hls/:id/prewarm', async (req, res, next) => {
   try {
+    if (!ENABLE_HLS_PREWARM) {
+      res.status(202).json({
+        status: 'disabled',
+        message: 'Background HLS prewarm is disabled to protect Google Drive download quota.'
+      });
+      return;
+    }
+
     const libraryKey = getLibraryKey(req);
     const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     if (!video.canDownload) {

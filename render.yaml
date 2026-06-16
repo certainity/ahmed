@@ -34,6 +34,10 @@ services:
         value: 1258291200
       - key: HLS_JOB_START_TIMEOUT_MS
         value: 90000
+      - key: ENABLE_HLS_PREWARM
+        value: false
+      - key: ENABLE_VIDEO_THUMBNAILS
+        value: false
       - key: CLIENT_ORIGIN
         value: '*'
       - key: GOOGLE_CLIENT_EMAIL
