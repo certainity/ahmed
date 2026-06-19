@@ -36,9 +36,9 @@ const THUMBNAIL_WAIT_MS = Math.max(0, Number(process.env.THUMBNAIL_WAIT_MS || 70
 const THUMBNAIL_TIMEOUT_MS = Math.max(5000, Number(process.env.THUMBNAIL_TIMEOUT_MS || 45000));
 const THUMBNAIL_SEEK_SECONDS = Math.max(0, Number(process.env.THUMBNAIL_SEEK_SECONDS || 8));
 const HLS_PREWARM_MAX_ACTIVE = Math.max(0, Number(process.env.HLS_PREWARM_MAX_ACTIVE || 1));
-const HLS_START_SEGMENTS = Math.max(2, Number(process.env.HLS_START_SEGMENTS || 4));
-const HLS_START_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_START_TIMEOUT_MS || 12000));
-const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEOUT_MS || 8000));
+const HLS_START_SEGMENTS = Math.max(2, Number(process.env.HLS_START_SEGMENTS || 2));
+const HLS_START_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_START_TIMEOUT_MS || 8000));
+const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEOUT_MS || 5000));
 const HLS_JOB_START_TIMEOUT_MS = Math.max(15000, Number(process.env.HLS_JOB_START_TIMEOUT_MS || 90000));
 const HLS_PREWARM_MAX_BYTES = Math.max(50 * 1024 * 1024, Number(process.env.HLS_PREWARM_MAX_BYTES || 1200 * 1024 * 1024));
 const ENABLE_HLS_PREWARM = String(process.env.ENABLE_HLS_PREWARM || 'false').toLowerCase() === 'true';

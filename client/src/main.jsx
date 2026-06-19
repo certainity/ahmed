@@ -39,6 +39,7 @@ function apiUrl(path) {
 const hlsPrewarmAttempts = new Map();
 const HLS_PREWARM_RETRY_MS = 60 * 1000;
 const HLS_PREWARM_MAX_BYTES = 1200 * 1024 * 1024;
+const HLS_AUTO_PREVIEW_MS = 9000;
 const ENABLE_HLS_PREWARM = false;
 
 function prewarmUrlFor(video) {
@@ -817,6 +818,8 @@ function WatchPlayer({
 
     if (playback.hls && Hls.isSupported()) {
       let retryTimeout = null;
+      let previewTimeout = null;
+      let manifestReady = false;
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false
@@ -824,7 +827,16 @@ function WatchPlayer({
       hlsRef.current = hls;
       hls.loadSource(playback.src);
       hls.attachMedia(player);
+      if (video.drivePreviewUrl) {
+        previewTimeout = window.setTimeout(() => {
+          if (manifestReady || drivePreviewMode) return;
+          setPlaybackStatus('Opening Google Drive preview because the stream is taking too long...');
+          openDrivePreview();
+        }, HLS_AUTO_PREVIEW_MS);
+      }
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        manifestReady = true;
+        window.clearTimeout(previewTimeout);
         setPlaybackStatus('');
         tryStartPlayback();
       });
@@ -865,6 +877,7 @@ function WatchPlayer({
       });
       return () => {
         window.clearTimeout(retryTimeout);
+        window.clearTimeout(previewTimeout);
         hls.destroy();
         hlsRef.current = null;
       };
