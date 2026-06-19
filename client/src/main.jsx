@@ -199,21 +199,32 @@ function getShuffleRank(video) {
   return hashString(`${video.id}:${video.title}:${video.folderPathLabel}`);
 }
 
-function getPlaybackSource(video) {
-  if (!video.directPlayable) {
-    return {
-      src: video.hlsUrl,
-      mode: 'HLS audio-compatible stream',
-      type: 'application/vnd.apple.mpegurl',
-      hls: true
-    };
-  }
+function canTryDirectPlayback(video) {
+  const filename = String(video?.filename || video?.title || '').toLowerCase();
+  const mimeType = String(video?.mimeType || '').toLowerCase();
+  if (filename.endsWith('.mkv') || filename.endsWith('.avi')) return false;
+  if (mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'video/ogg') return true;
+  return /\.(mp4|m4v|mov|webm|ogg|ogv)$/i.test(filename);
+}
 
-  return {
+function getPlaybackSources(video) {
+  const directSource = {
     src: video.streamUrl,
     mode: 'Direct browser playback',
     type: video.mimeType || 'video/mp4'
   };
+  const hlsSource = video.hlsUrl ? {
+    src: video.hlsUrl,
+    mode: 'HLS audio-compatible stream',
+    type: 'application/vnd.apple.mpegurl',
+    hls: true
+  } : null;
+
+  if (canTryDirectPlayback(video)) {
+    return hlsSource ? [directSource, hlsSource] : [directSource];
+  }
+
+  return hlsSource ? [hlsSource, directSource] : [directSource];
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {
@@ -683,11 +694,21 @@ function WatchPlayer({
   const playerRef = useRef(null);
   const shellRef = useRef(null);
   const hlsRef = useRef(null);
-  const playback = useMemo(() => (video ? getPlaybackSource(video) : null), [video]);
+  const playbackSources = useMemo(() => (video ? getPlaybackSources(video) : []), [video]);
+  const [playbackIndex, setPlaybackIndex] = useState(0);
+  const playback = playbackSources[playbackIndex] || null;
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [drivePreviewMode, setDrivePreviewMode] = useState(false);
   const showDrivePreview = Boolean(playbackStatus && video?.drivePreviewUrl);
+
+  function switchToHlsFallback() {
+    const nextHlsIndex = playbackSources.findIndex((source, index) => index > playbackIndex && source.hls);
+    if (nextHlsIndex < 0) return false;
+    setPlaybackStatus('Switching to audio-compatible stream...');
+    setPlaybackIndex(nextHlsIndex);
+    return true;
+  }
 
   function tryStartPlayback() {
     const player = playerRef.current;
@@ -773,9 +794,21 @@ function WatchPlayer({
   useEffect(() => {
     const player = playerRef.current;
     setDrivePreviewMode(false);
+    setPlaybackIndex(0);
+    setPlaybackStatus('');
+    hlsRef.current?.destroy();
+    hlsRef.current = null;
+    if (player) {
+      player.pause();
+      player.removeAttribute('src');
+      player.load();
+    }
+  }, [video]);
+
+  useEffect(() => {
+    const player = playerRef.current;
     if (!player || !video || !playback) return undefined;
 
-    setPlaybackStatus('');
     hlsRef.current?.destroy();
     hlsRef.current = null;
 
@@ -844,7 +877,7 @@ function WatchPlayer({
       player.removeAttribute('src');
       player.load();
     };
-  }, [video, playback]);
+  }, [video, playback, playbackIndex]);
 
   useEffect(() => {
     const player = playerRef.current;
@@ -923,7 +956,9 @@ function WatchPlayer({
               onPlay={() => setPlaybackStatus('')}
               onError={() => {
                 if (!playback?.hls) {
-                  setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
+                  if (!switchToHlsFallback()) {
+                    setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
+                  }
                 }
               }}
               onVolumeChange={(event) => {
