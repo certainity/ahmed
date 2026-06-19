@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import Hls from 'hls.js';
 import './styles.css';
 
 const STORAGE_KEYS = {
@@ -39,7 +38,6 @@ function apiUrl(path) {
 const hlsPrewarmAttempts = new Map();
 const HLS_PREWARM_RETRY_MS = 60 * 1000;
 const HLS_PREWARM_MAX_BYTES = 1200 * 1024 * 1024;
-const HLS_AUTO_PREVIEW_MS = 9000;
 const ENABLE_HLS_PREWARM = false;
 
 function prewarmUrlFor(video) {
@@ -203,6 +201,7 @@ function getShuffleRank(video) {
 function canTryDirectPlayback(video) {
   const filename = String(video?.filename || video?.title || '').toLowerCase();
   const mimeType = String(video?.mimeType || '').toLowerCase();
+  if (/\b(x265|h265|hevc|eac3|dts|truehd|10bit)\b/.test(filename)) return false;
   if (filename.endsWith('.mkv') || filename.endsWith('.avi')) return false;
   if (mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'video/ogg') return true;
   return /\.(mp4|m4v|mov|webm|ogg|ogv)$/i.test(filename);
@@ -214,18 +213,7 @@ function getPlaybackSources(video) {
     mode: 'Direct browser playback',
     type: video.mimeType || 'video/mp4'
   };
-  const hlsSource = video.hlsUrl ? {
-    src: video.hlsUrl,
-    mode: 'HLS audio-compatible stream',
-    type: 'application/vnd.apple.mpegurl',
-    hls: true
-  } : null;
-
-  if (canTryDirectPlayback(video)) {
-    return hlsSource ? [directSource, hlsSource] : [directSource];
-  }
-
-  return hlsSource ? [hlsSource, directSource] : [directSource];
+  return [directSource];
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {
@@ -694,7 +682,6 @@ function WatchPlayer({
 }) {
   const playerRef = useRef(null);
   const shellRef = useRef(null);
-  const hlsRef = useRef(null);
   const playbackSources = useMemo(() => (video ? getPlaybackSources(video) : []), [video]);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const playback = playbackSources[playbackIndex] || null;
@@ -702,14 +689,7 @@ function WatchPlayer({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [drivePreviewMode, setDrivePreviewMode] = useState(false);
   const showDrivePreview = Boolean(playbackStatus && video?.drivePreviewUrl);
-
-  function switchToHlsFallback() {
-    const nextHlsIndex = playbackSources.findIndex((source, index) => index > playbackIndex && source.hls);
-    if (nextHlsIndex < 0) return false;
-    setPlaybackStatus('Switching to audio-compatible stream...');
-    setPlaybackIndex(nextHlsIndex);
-    return true;
-  }
+  const playbackMode = drivePreviewMode ? 'Google Drive preview' : playback?.mode || 'Direct browser playback';
 
   function tryStartPlayback() {
     const player = playerRef.current;
@@ -764,8 +744,6 @@ function WatchPlayer({
       player.removeAttribute('src');
       player.load();
     }
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
     setDrivePreviewMode(true);
     setPlaybackStatus('Playing with Google Drive preview.');
   }
@@ -797,8 +775,6 @@ function WatchPlayer({
     setDrivePreviewMode(false);
     setPlaybackIndex(0);
     setPlaybackStatus('');
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
     if (player) {
       player.pause();
       player.removeAttribute('src');
@@ -810,77 +786,12 @@ function WatchPlayer({
     const player = playerRef.current;
     if (!player || !video || !playback) return undefined;
 
-    hlsRef.current?.destroy();
-    hlsRef.current = null;
-
     player.muted = false;
     player.volume = 1;
 
-    if (playback.hls && Hls.isSupported()) {
-      let retryTimeout = null;
-      let previewTimeout = null;
-      let manifestReady = false;
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: false
-      });
-      hlsRef.current = hls;
-      hls.loadSource(playback.src);
-      hls.attachMedia(player);
-      if (video.drivePreviewUrl) {
-        previewTimeout = window.setTimeout(() => {
-          if (manifestReady || drivePreviewMode) return;
-          setPlaybackStatus('Opening Google Drive preview because the stream is taking too long...');
-          openDrivePreview();
-        }, HLS_AUTO_PREVIEW_MS);
-      }
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        manifestReady = true;
-        window.clearTimeout(previewTimeout);
-        setPlaybackStatus('');
-        tryStartPlayback();
-      });
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        const responseCode = data?.response?.code || data?.networkDetails?.status || 0;
-        if (responseCode === 403 || responseCode === 429) {
-          setPlaybackStatus('Google Drive download quota is exceeded for this video. Try again later.');
-          return;
-        }
-
-        if (
-          (data?.type === Hls.ErrorTypes.NETWORK_ERROR && data?.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR) ||
-          data?.details === Hls.ErrorDetails.MANIFEST_PARSING_ERROR
-        ) {
-          setPlaybackStatus('Preparing audio-compatible stream...');
-          window.clearTimeout(retryTimeout);
-          retryTimeout = window.setTimeout(() => {
-            hls.loadSource(playback.src);
-          }, 2500);
-          return;
-        }
-
-        if (data?.fatal) {
-          setPlaybackStatus('Reconnecting stream...');
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            window.clearTimeout(retryTimeout);
-            retryTimeout = window.setTimeout(() => {
-              hls.loadSource(playback.src);
-            }, 2500);
-            return;
-          }
-          if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
-            hls.recoverMediaError();
-            return;
-          }
-          setPlaybackStatus('Preparing audio-compatible stream...');
-        }
-      });
-      return () => {
-        window.clearTimeout(retryTimeout);
-        window.clearTimeout(previewTimeout);
-        hls.destroy();
-        hlsRef.current = null;
-      };
+    if (!canTryDirectPlayback(video) && video.drivePreviewUrl) {
+      openDrivePreview();
+      return undefined;
     }
 
     player.src = playback.src;
@@ -968,10 +879,10 @@ function WatchPlayer({
               disablePictureInPicture
               onPlay={() => setPlaybackStatus('')}
               onError={() => {
-                if (!playback?.hls) {
-                  if (!switchToHlsFallback()) {
-                    setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
-                  }
+                if (video.drivePreviewUrl) {
+                  openDrivePreview();
+                } else {
+                  setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
                 }
               }}
               onVolumeChange={(event) => {
@@ -993,7 +904,7 @@ function WatchPlayer({
         </div>
         <div className="player-footer">
           <span>
-            🛡 Google Drive Approved Folder Stream · {playback.mode}
+            🛡 Google Drive Approved Folder Stream · {playbackMode}
             {playbackStatus ? ` · ${playbackStatus}` : ''}
           </span>
           <div className="player-footer-actions">
