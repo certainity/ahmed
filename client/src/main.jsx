@@ -198,22 +198,12 @@ function getShuffleRank(video) {
   return hashString(`${video.id}:${video.title}:${video.folderPathLabel}`);
 }
 
-function canTryDirectPlayback(video) {
-  const filename = String(video?.filename || video?.title || '').toLowerCase();
-  const mimeType = String(video?.mimeType || '').toLowerCase();
-  if (/\b(x265|h265|hevc|eac3|dts|truehd|10bit)\b/.test(filename)) return false;
-  if (filename.endsWith('.mkv') || filename.endsWith('.avi')) return false;
-  if (mimeType === 'video/mp4' || mimeType === 'video/webm' || mimeType === 'video/ogg') return true;
-  return /\.(mp4|m4v|mov|webm|ogg|ogv)$/i.test(filename);
-}
-
 function getPlaybackSources(video) {
-  const directSource = {
+  return [{
     src: video.streamUrl,
     mode: 'Direct browser playback',
     type: video.mimeType || 'video/mp4'
-  };
-  return [directSource];
+  }];
 }
 
 function getFolderEpisodeQueue(currentVideo, videos) {
@@ -688,7 +678,6 @@ function WatchPlayer({
   const [playbackStatus, setPlaybackStatus] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [drivePreviewMode, setDrivePreviewMode] = useState(false);
-  const showDrivePreview = Boolean(playbackStatus && video?.drivePreviewUrl);
   const playbackMode = drivePreviewMode ? 'Google Drive preview' : playback?.mode || 'Direct browser playback';
 
   function tryStartPlayback() {
@@ -748,6 +737,18 @@ function WatchPlayer({
     setPlaybackStatus('Playing with Google Drive preview.');
   }
 
+  function openBrowserPlayer() {
+    setDrivePreviewMode(false);
+    setPlaybackStatus('');
+    window.setTimeout(() => {
+      const player = playerRef.current;
+      if (!player || !playback) return;
+      player.src = playback.src;
+      player.load();
+      tryStartPlayback();
+    }, 0);
+  }
+
   useEffect(() => {
     function onKeyDown(event) {
       if (event.key !== 'Escape') return;
@@ -788,11 +789,6 @@ function WatchPlayer({
 
     player.muted = false;
     player.volume = 1;
-
-    if (!canTryDirectPlayback(video) && video.drivePreviewUrl) {
-      openDrivePreview();
-      return undefined;
-    }
 
     player.src = playback.src;
     player.load();
@@ -879,11 +875,11 @@ function WatchPlayer({
               disablePictureInPicture
               onPlay={() => setPlaybackStatus('')}
               onError={() => {
-                if (video.drivePreviewUrl) {
-                  openDrivePreview();
-                } else {
-                  setPlaybackStatus('Google Drive could not stream this video right now. It may be quota-limited; try again later.');
-                }
+                setPlaybackStatus(
+                  video.drivePreviewUrl
+                    ? 'Browser player could not play this file. Try Drive Preview below.'
+                    : 'Google Drive could not stream this video right now. It may be quota-limited; try again later.'
+                );
               }}
               onVolumeChange={(event) => {
                 if (!event.currentTarget.muted) setPlaybackStatus('');
@@ -908,13 +904,22 @@ function WatchPlayer({
             {playbackStatus ? ` · ${playbackStatus}` : ''}
           </span>
           <div className="player-footer-actions">
-            {showDrivePreview ? (
+            {drivePreviewMode ? (
+              <button
+                className="player-close-btn drive-preview-link"
+                onClick={openBrowserPlayer}
+                type="button"
+              >
+                Browser Player
+              </button>
+            ) : null}
+            {video.drivePreviewUrl ? (
               <button
                 className="player-close-btn drive-preview-link"
                 onClick={openDrivePreview}
                 type="button"
               >
-                Open Here
+                Drive Preview
               </button>
             ) : null}
             <button className="player-close-btn" onClick={toggleFullscreen} type="button">
