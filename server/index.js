@@ -20,7 +20,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
-const HLS_CACHE_VERSION = 'v5';
+const HLS_CACHE_VERSION = 'v6';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
   fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
@@ -393,6 +393,9 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
         '-preset', 'ultrafast',
         '-tune', 'zerolatency',
         '-crf', '30',
+        // 10-bit sources would otherwise become High10 h264, which many
+        // hardware decoders (Android, TVs) cannot play.
+        '-pix_fmt', 'yuv420p',
         '-vf', 'scale=trunc(min(1280\\,iw)/2)*2:-2',
         '-force_key_frames', 'expr:gte(t,n_forced*2)'
       ];
