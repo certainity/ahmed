@@ -580,6 +580,8 @@ async function listDriveChildren(parentFolderId) {
   return children;
 }
 
+const SCAN_CONCURRENCY = Math.max(1, Number(process.env.SCAN_CONCURRENCY || 5));
+
 async function scanApprovedFolderTree(libraryKey) {
   const folderId = ensureFolderConfigured(libraryKey);
 
@@ -589,24 +591,16 @@ async function scanApprovedFolderTree(libraryKey) {
   const warnings = [];
   let folderCount = 0;
 
-  while (queue.length) {
-    const folderContext = queue.shift();
-    if (visitedFolders.has(folderContext.id)) continue;
-    visitedFolders.add(folderContext.id);
-    folderCount += 1;
+  let stopped = false;
 
-    if (folderCount > MAX_FOLDERS) {
-      warnings.push(`Scan stopped after ${MAX_FOLDERS} folders. Raise MAX_FOLDERS if your approved library is larger.`);
-      break;
-    }
-
+  async function scanFolder(folderContext) {
     let children = [];
     try {
       children = await listDriveChildren(folderContext.id);
     } catch (error) {
       const folderLabel = folderContext.path.length ? folderContext.path.join(' / ') : 'Main folder';
       warnings.push(`Could not scan ${folderLabel}: ${error.message || 'Google Drive error'}`);
-      continue;
+      return;
     }
 
     for (const child of children) {
@@ -627,8 +621,47 @@ async function scanApprovedFolderTree(libraryKey) {
     }
   }
 
+  while (queue.length && !stopped) {
+    const batch = [];
+    while (queue.length && batch.length < SCAN_CONCURRENCY) {
+      const folderContext = queue.shift();
+      if (visitedFolders.has(folderContext.id)) continue;
+      visitedFolders.add(folderContext.id);
+      folderCount += 1;
+      if (folderCount > MAX_FOLDERS) {
+        warnings.push(`Scan stopped after ${MAX_FOLDERS} folders. Raise MAX_FOLDERS if your approved library is larger.`);
+        stopped = true;
+        break;
+      }
+      batch.push(folderContext);
+    }
+    await Promise.all(batch.map(scanFolder));
+  }
+
   videos.sort(compareVideos);
   return { videos, folderCount, warnings };
+}
+
+const libraryRefreshes = new Map();
+
+function refreshLibrary(libraryKey) {
+  const existing = libraryRefreshes.get(libraryKey);
+  if (existing) return existing;
+
+  const promise = scanApprovedFolderTree(libraryKey)
+    .then((scanResult) => {
+      setLibraryCache(libraryKey, {
+        fetchedAt: Date.now(),
+        videos: scanResult.videos,
+        folderCount: scanResult.folderCount,
+        warnings: scanResult.warnings
+      });
+      return getLibraryCache(libraryKey).videos;
+    })
+    .finally(() => libraryRefreshes.delete(libraryKey));
+
+  libraryRefreshes.set(libraryKey, promise);
+  return promise;
 }
 
 async function listVideos({ force = false, libraryKey = 'kids' } = {}) {
@@ -640,15 +673,16 @@ async function listVideos({ force = false, libraryKey = 'kids' } = {}) {
     return videoCache.videos;
   }
 
-  const scanResult = await scanApprovedFolderTree(libraryKey);
-  setLibraryCache(libraryKey, {
-    fetchedAt: Date.now(),
-    videos: scanResult.videos,
-    folderCount: scanResult.folderCount,
-    warnings: scanResult.warnings
-  });
+  // Stale-while-revalidate: serve the previous index instantly and rescan
+  // Drive in the background, so page loads never wait on a full scan.
+  if (!force && videoCache.videos.length) {
+    refreshLibrary(libraryKey).catch((error) => {
+      console.error(`Background library refresh failed for ${libraryKey}:`, error.message || error);
+    });
+    return videoCache.videos;
+  }
 
-  return getLibraryCache(libraryKey).videos;
+  return refreshLibrary(libraryKey);
 }
 
 async function getAllowedVideo(fileId, libraryKey = 'kids', { allowStale = false } = {}) {
@@ -819,7 +853,7 @@ app.get('/api/videos', async (req, res, next) => {
 app.get('/api/thumbnails/:id', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
-    const video = await getAllowedVideo(req.params.id, libraryKey);
+    const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     const cachePath = getThumbnailPath(libraryKey, video.id);
 
     // 1. Check if cached thumbnail exists

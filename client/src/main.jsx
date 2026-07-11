@@ -278,6 +278,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   const resumeTimeRef = useRef(0);
   const soundSwitchedRef = useRef(false);
   const silentTicksRef = useRef(0);
+  const lastProgressSaveRef = useRef(0);
 
   const currentIndex = queue.findIndex((item) => item.id === video?.id);
   const previous = currentIndex > 0 ? queue[currentIndex - 1] : null;
@@ -362,7 +363,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
             throw new Error('This browser cannot play the converted stream. Try Drive Preview.');
           }
 
-          hls = new Hls({ maxBufferLength: 60, backBufferLength: 60 });
+          hls = new Hls({ maxBufferLength: 30, maxBufferSize: 40 * 1000 * 1000, backBufferLength: 30 });
           let networkRetries = 0;
           let mediaRetries = 0;
           hls.loadSource(video.hlsUrl);
@@ -396,6 +397,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
 
     return () => {
       cancelled = true;
+      remember(true);
       aborter.abort();
       player.removeEventListener('loadedmetadata', restore);
       player.removeEventListener('timeupdate', onSilenceCheck);
@@ -408,9 +410,14 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
 
   if (!video) return null;
 
-  function remember() {
+  function remember(force = false) {
     const player = videoRef.current;
     if (!player || mode !== 'browser') return;
+    // Saving progress re-renders the page; throttle it so timeupdate
+    // (4x/second) does not overwhelm low-power devices like TVs.
+    const now = Date.now();
+    if (!force && now - lastProgressSaveRef.current < 5000) return;
+    lastProgressSaveRef.current = now;
     setProgress((current) => {
       const nextProgress = {
         ...current,
@@ -426,7 +433,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   }
 
   function chooseMode(nextMode) {
-    remember();
+    remember(true);
     setStatus('');
     setMode(nextMode);
   }
@@ -452,10 +459,11 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               controls
               playsInline
               preload="metadata"
-              onTimeUpdate={remember}
-              onPause={remember}
+              onTimeUpdate={() => remember()}
+              onPause={() => remember(true)}
+              onSeeked={() => remember(true)}
               onEnded={() => {
-                remember();
+                remember(true);
                 if (next) onPick(next);
               }}
               onError={() => {
@@ -630,6 +638,8 @@ const SORT_CHIPS = [
   { key: 'long', label: 'Longest' }
 ];
 
+const GRID_BATCH = 48;
+
 function App() {
   const { videos, library, loading, error, refreshedAt, refresh } = useVideos();
   const [query, setQuery] = useState('');
@@ -640,10 +650,28 @@ function App() {
   const [favorites, setFavorites] = useState(() => readJson(STORAGE_KEYS.favorites, []));
   const [sidebarMini, setSidebarMini] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(GRID_BATCH);
+  const sentinelRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
   }, [selectedVideo?.id]);
+
+  useEffect(() => {
+    setVisibleCount(GRID_BATCH);
+  }, [activeFolder, query, sortMode]);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return undefined;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setVisibleCount((count) => count + GRID_BATCH);
+      }
+    }, { rootMargin: '1500px 0px' });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  });
 
   useEffect(() => {
     function onKey(event) {
@@ -814,18 +842,23 @@ function App() {
                 <p>Loading Drive folder...</p>
               </div>
             ) : (
-              <section className="video-grid">
-                {filteredVideos.map((video) => (
-                  <VideoCard
-                    key={video.id}
-                    video={video}
-                    onPick={setSelectedVideo}
-                    progressValue={progressPercent(video, progress)}
-                    favorite={favorites.includes(video.id)}
-                    onToggleFavorite={toggleFavorite}
-                  />
-                ))}
-              </section>
+              <>
+                <section className="video-grid">
+                  {filteredVideos.slice(0, visibleCount).map((video) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      onPick={setSelectedVideo}
+                      progressValue={progressPercent(video, progress)}
+                      favorite={favorites.includes(video.id)}
+                      onToggleFavorite={toggleFavorite}
+                    />
+                  ))}
+                </section>
+                {filteredVideos.length > visibleCount ? (
+                  <div ref={sentinelRef} className="grid-sentinel" aria-hidden="true" />
+                ) : null}
+              </>
             )}
           </>
         )}

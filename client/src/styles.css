@@ -746,6 +746,10 @@ a {
   white-space: nowrap;
 }
 
+.grid-sentinel {
+  height: 1px;
+}
+
 /* ---------- loading ---------- */
 
 .loading-panel {
