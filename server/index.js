@@ -20,7 +20,7 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 const HLS_CACHE_DIR = path.resolve(__dirname, 'cache-hls');
-const HLS_CACHE_VERSION = 'v4';
+const HLS_CACHE_VERSION = 'v5';
 if (!fs.existsSync(HLS_CACHE_DIR)) {
   fs.mkdirSync(HLS_CACHE_DIR, { recursive: true });
 }
@@ -31,6 +31,7 @@ const MOVIE_DRIVE_FOLDER_ID = process.env.MOVIE_DRIVE_FOLDER_ID || '1ECrt0eLyv1w
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STREAM_CHUNK_SIZE = Math.max(1024 * 1024, Number(process.env.STREAM_CHUNK_SIZE || 8 * 1024 * 1024));
 const FFMPEG_PATH = process.env.FFMPEG_PATH || 'ffmpeg';
+const FFPROBE_PATH = process.env.FFPROBE_PATH || 'ffprobe';
 const THUMBNAIL_CONCURRENCY = Math.max(1, Number(process.env.THUMBNAIL_CONCURRENCY || 1));
 const THUMBNAIL_WAIT_MS = Math.max(0, Number(process.env.THUMBNAIL_WAIT_MS || 7000));
 const THUMBNAIL_TIMEOUT_MS = Math.max(5000, Number(process.env.THUMBNAIL_TIMEOUT_MS || 45000));
@@ -100,6 +101,8 @@ const videoCaches = new Map();
 
 const hlsJobs = new Map();
 const hlsLastErrors = new Map();
+const hlsPendingStarts = new Map();
+const videoCodecCache = new Map();
 const thumbnailJobs = new Map();
 const thumbnailQueue = [];
 let activeThumbnailJobs = 0;
@@ -293,18 +296,71 @@ function ffmpegHeaderString(headers) {
   return `${headerText}\r\n`;
 }
 
+function probeVideoCodec(streamUrl, jobKey) {
+  if (videoCodecCache.has(jobKey)) return Promise.resolve(videoCodecCache.get(jobKey));
+  return new Promise((resolve) => {
+    const child = spawn(FFPROBE_PATH, [
+      '-v', 'error',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=codec_name',
+      '-of', 'default=noprint_wrappers=1:nokey=1',
+      streamUrl
+    ], { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
+
+    let output = '';
+    let settled = false;
+    const finish = (codec) => {
+      if (settled) return;
+      settled = true;
+      if (codec) videoCodecCache.set(jobKey, codec);
+      resolve(codec);
+    };
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(null);
+    }, 15000);
+
+    child.stdout.on('data', (chunk) => {
+      output += chunk.toString();
+    });
+    child.on('exit', () => {
+      clearTimeout(timer);
+      finish(output.trim().split(/\r?\n/)[0] || null);
+    });
+    child.on('error', () => {
+      clearTimeout(timer);
+      finish(null);
+    });
+  });
+}
+
 async function ensureHlsTranscode(libraryKey, video) {
   const paths = getHlsPaths(libraryKey, video.id);
   const jobKey = `${libraryKey}:${video.id}`;
   const existingJob = hlsJobs.get(jobKey);
   if (fs.existsSync(paths.playlist) && (isHlsComplete(paths) || existingJob)) return paths;
   if (existingJob) return existingJob.paths;
+  const pendingStart = hlsPendingStarts.get(jobKey);
+  if (pendingStart) return pendingStart;
 
+  const startPromise = startHlsTranscode(libraryKey, video, paths, jobKey)
+    .finally(() => hlsPendingStarts.delete(jobKey));
+  hlsPendingStarts.set(jobKey, startPromise);
+  return startPromise;
+}
+
+async function startHlsTranscode(libraryKey, video, paths, jobKey) {
   fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
   const streamUrl = `http://127.0.0.1:${PORT}/api/stream/${encodeURIComponent(video.id)}?library=${encodeURIComponent(libraryKey)}`;
-  const args = [
+
+  // H.264 sources only need their audio converted to AAC: copying the video
+  // stream keeps full quality and remuxes far faster than realtime.
+  const videoCodec = await probeVideoCodec(streamUrl, jobKey);
+  const canCopyVideo = videoCodec === 'h264';
+
+  const inputArgs = [
     '-hide_banner',
     '-loglevel', 'warning',
     '-reconnect', '1',
@@ -313,23 +369,31 @@ async function ensureHlsTranscode(libraryKey, video) {
     '-fflags', '+genpts',
     '-i', streamUrl,
     '-map', '0:v:0',
-    '-map', '0:a:0?',
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-tune', 'zerolatency',
-    '-crf', '30',
-    '-vf', 'scale=trunc(min(1280\\,iw)/2)*2:-2',
-    '-force_key_frames', 'expr:gte(t,n_forced*2)',
+    '-map', '0:a:0?'
+  ];
+  const videoArgs = canCopyVideo
+    ? ['-c:v', 'copy']
+    : [
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-tune', 'zerolatency',
+        '-crf', '30',
+        '-vf', 'scale=trunc(min(1280\\,iw)/2)*2:-2',
+        '-force_key_frames', 'expr:gte(t,n_forced*2)'
+      ];
+  const args = [
+    ...inputArgs,
+    ...videoArgs,
     '-c:a', 'aac',
-    '-b:a', '128k',
+    '-b:a', '160k',
     '-ac', '2',
     '-avoid_negative_ts', 'make_zero',
     '-max_muxing_queue_size', '2048',
     '-f', 'hls',
-    '-hls_time', '2',
+    '-hls_time', canCopyVideo ? '4' : '2',
     '-hls_list_size', '0',
     '-hls_playlist_type', 'event',
-    '-hls_flags', 'split_by_time+temp_file',
+    '-hls_flags', canCopyVideo ? 'temp_file' : 'split_by_time+temp_file',
     '-hls_segment_filename', paths.segmentPattern,
     paths.playlist
   ];
