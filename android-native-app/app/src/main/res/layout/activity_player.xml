@@ -1,91 +1,157 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000">
+    android:background="#0F0F0F"
+    android:orientation="vertical">
 
-    <androidx.media3.ui.PlayerView
-        android:id="@+id/player_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:keepScreenOn="true"
-        app:show_buffering="when_playing"
-        app:resize_mode="fit" />
-
-    <LinearLayout
-        android:id="@+id/player_top_bar"
+    <com.personal.kidscinemanative.VideoFrameLayout
+        android:id="@+id/video_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#99000000"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="8dp"
-        android:paddingEnd="8dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp">
+        android:background="#000000">
 
-        <TextView
-            android:id="@+id/btn_close"
-            android:layout_width="52dp"
-            android:layout_height="44dp"
-            android:background="@drawable/duration_badge"
-            android:gravity="center"
-            android:text="✕"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp" />
+        <androidx.media3.ui.PlayerView
+            android:id="@+id/player_view"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:keepScreenOn="true"
+            app:show_buffering="when_playing"
+            app:resize_mode="fit" />
 
-        <TextView
-            android:id="@+id/player_title"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:id="@+id/player_top_bar"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_marginEnd="12dp"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
+            android:background="#99000000"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/btn_close"
+                android:layout_width="52dp"
+                android:layout_height="44dp"
+                android:background="@drawable/duration_badge"
+                android:gravity="center"
+                android:text="✕"
+                android:textColor="#FFFFFF"
+                android:textSize="20sp" />
+
+            <TextView
+                android:id="@+id/player_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btn_prev"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:background="@drawable/duration_badge"
+                android:gravity="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="◀ Previous"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/btn_next"
+                android:layout_width="wrap_content"
+                android:layout_height="44dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/duration_badge"
+                android:gravity="center"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:text="Next ▶"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/player_status"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal|bottom"
+            android:layout_marginBottom="72dp"
+            android:background="@drawable/duration_badge"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="13sp"
+            android:visibility="gone" />
+    </com.personal.kidscinemanative.VideoFrameLayout>
+
+    <LinearLayout
+        android:id="@+id/below_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/watch_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:textColor="#F1F1F1"
+            android:textSize="17sp"
             android:textStyle="bold" />
 
         <TextView
-            android:id="@+id/btn_prev"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:background="@drawable/duration_badge"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="◀ Previous"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp" />
+            android:id="@+id/watch_meta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="3dp"
+            android:paddingBottom="10dp"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#262626" />
 
         <TextView
-            android:id="@+id/btn_next"
-            android:layout_width="wrap_content"
-            android:layout_height="44dp"
-            android:layout_marginStart="8dp"
-            android:background="@drawable/duration_badge"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:text="Next ▶"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp" />
-    </LinearLayout>
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="8dp"
+            android:text="Up next · plays automatically"
+            android:textColor="#F1F1F1"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
-    <TextView
-        android:id="@+id/player_status"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal|bottom"
-        android:layout_marginBottom="96dp"
-        android:background="@drawable/duration_badge"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
-        android:paddingTop="6dp"
-        android:paddingBottom="6dp"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:visibility="gone" />
-</FrameLayout>
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/up_next"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="16dp" />
+    </LinearLayout>
+</LinearLayout>

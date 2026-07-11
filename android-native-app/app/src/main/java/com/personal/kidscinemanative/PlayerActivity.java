@@ -7,6 +7,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.TextView;
 
 import androidx.media3.common.C;
@@ -19,6 +20,8 @@ import androidx.media3.common.Tracks;
 import androidx.media3.datasource.HttpDataSource;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 public class PlayerActivity extends Activity {
     public static final String EXTRA_INDEX = "index";
@@ -31,18 +34,25 @@ public class PlayerActivity extends Activity {
     private PlayerView playerView;
     private TextView status;
     private TextView playerTitle;
+    private TextView watchTitle;
+    private TextView watchMeta;
     private TextView btnPrev;
     private TextView btnNext;
     private View topBar;
+    private View belowContent;
+    private View videoContainer;
+    private RecyclerView upNext;
+    private UpNextAdapter upNextAdapter;
     private SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean fullscreen = true;
 
     private int index;
     private int stage = STAGE_DIRECT;
     private int hlsRetries = 0;
     private long lastStartPositionMs = 0;
     private boolean enforceStartPosition = false;
+    private boolean fullscreen = false;
+    private boolean controllerVisible = true;
 
     private final Runnable progressSaver = new Runnable() {
         @Override
@@ -60,25 +70,38 @@ public class PlayerActivity extends Activity {
         prefs = getSharedPreferences("watch-progress", MODE_PRIVATE);
         status = findViewById(R.id.player_status);
         playerTitle = findViewById(R.id.player_title);
+        watchTitle = findViewById(R.id.watch_title);
+        watchMeta = findViewById(R.id.watch_meta);
         topBar = findViewById(R.id.player_top_bar);
+        belowContent = findViewById(R.id.below_content);
+        videoContainer = findViewById(R.id.video_container);
         btnPrev = findViewById(R.id.btn_prev);
         btnNext = findViewById(R.id.btn_next);
         playerView = findViewById(R.id.player_view);
+        upNext = findViewById(R.id.up_next);
 
-        findViewById(R.id.btn_close).setOnClickListener((v) -> finish());
+        findViewById(R.id.btn_close).setOnClickListener((v) -> {
+            if (fullscreen) setFullscreen(false);
+            else finish();
+        });
         btnPrev.setOnClickListener((v) -> playIndex(index - 1));
         btnNext.setOnClickListener((v) -> playIndex(index + 1));
 
+        upNext.setLayoutManager(new LinearLayoutManager(this));
+        upNextAdapter = new UpNextAdapter(Api.queue, this::playIndex);
+        upNext.setAdapter(upNextAdapter);
+
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
-        // The queue is navigated with the big Previous/Next buttons in the top
-        // bar; hide the tiny built-in ones that stay greyed out.
         playerView.setShowPreviousButton(false);
         playerView.setShowNextButton(false);
-        playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) (visibility) ->
-            topBar.setVisibility(visibility == View.VISIBLE ? View.VISIBLE : View.GONE));
+        playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) (visibility) -> {
+            controllerVisible = visibility == View.VISIBLE;
+            updateTopBar();
+        });
         playerView.setFullscreenButtonClickListener((isFullScreen) -> setFullscreen(isFullScreen));
-        playerView.setFullscreenButtonState(true);
+        playerView.setFullscreenButtonState(false);
+
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -124,7 +147,6 @@ public class PlayerActivity extends Activity {
 
         index = getIntent().getIntExtra(EXTRA_INDEX, 0);
         playIndex(index);
-        hideSystemBars();
     }
 
     private Video current() {
@@ -133,21 +155,39 @@ public class PlayerActivity extends Activity {
 
     private void playIndex(int nextIndex) {
         if (nextIndex < 0 || nextIndex >= Api.queue.size()) {
-            finish();
+            if (Api.queue.isEmpty()) finish();
             return;
         }
         index = nextIndex;
         stage = STAGE_DIRECT;
         hlsRetries = 0;
-        playerTitle.setText(current().cleanTitle());
+
+        Video video = current();
+        playerTitle.setText(video.cleanTitle());
+        watchTitle.setText(video.cleanTitle());
+        watchMeta.setText(video.collection
+            + (video.size > 0 ? " · " + video.sizeLabel() : "")
+            + " · " + video.durationLabel());
         btnPrev.setAlpha(index > 0 ? 1f : 0.35f);
         btnNext.setAlpha(index < Api.queue.size() - 1 ? 1f : 0.35f);
+        upNextAdapter.setCurrentIndex(index);
+        upNext.scrollToPosition(index);
+
         long saved = prefs.getLong(progressKey(), 0);
         start(saved > 5000 ? saved : 0);
     }
 
     private void setFullscreen(boolean wantFullscreen) {
         fullscreen = wantFullscreen;
+        playerView.setFullscreenButtonState(wantFullscreen);
+        belowContent.setVisibility(wantFullscreen ? View.GONE : View.VISIBLE);
+
+        ViewGroup.LayoutParams params = videoContainer.getLayoutParams();
+        params.height = wantFullscreen
+            ? ViewGroup.LayoutParams.MATCH_PARENT
+            : ViewGroup.LayoutParams.WRAP_CONTENT;
+        videoContainer.setLayoutParams(params);
+
         setRequestedOrientation(wantFullscreen
             ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
             : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
@@ -156,6 +196,11 @@ public class PlayerActivity extends Activity {
         } else {
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         }
+        updateTopBar();
+    }
+
+    private void updateTopBar() {
+        topBar.setVisibility(fullscreen && controllerVisible ? View.VISIBLE : View.GONE);
     }
 
     private void start(long resumePositionMs) {
@@ -252,7 +297,10 @@ public class PlayerActivity extends Activity {
         if (player == null || Api.queue.isEmpty()) return;
         long position = player.getCurrentPosition();
         if (position > 5000) {
-            prefs.edit().putLong(progressKey(), position).apply();
+            prefs.edit()
+                .putLong(progressKey(), position)
+                .putLong("t:" + current().id, System.currentTimeMillis())
+                .apply();
         }
     }
 
@@ -273,6 +321,15 @@ public class PlayerActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                 | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                 | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (fullscreen) {
+            setFullscreen(false);
+            return;
+        }
+        super.onBackPressed();
     }
 
     @Override
