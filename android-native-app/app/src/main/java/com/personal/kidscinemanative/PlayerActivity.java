@@ -2,6 +2,7 @@ package com.personal.kidscinemanative;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,9 +28,15 @@ public class PlayerActivity extends Activity {
     private static final int STAGE_ENCODE = 2; // full re-encode for undecodable video
 
     private ExoPlayer player;
+    private PlayerView playerView;
     private TextView status;
+    private TextView playerTitle;
+    private TextView btnPrev;
+    private TextView btnNext;
+    private View topBar;
     private SharedPreferences prefs;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean fullscreen = true;
 
     private int index;
     private int stage = STAGE_DIRECT;
@@ -52,10 +59,26 @@ public class PlayerActivity extends Activity {
 
         prefs = getSharedPreferences("watch-progress", MODE_PRIVATE);
         status = findViewById(R.id.player_status);
-        PlayerView playerView = findViewById(R.id.player_view);
+        playerTitle = findViewById(R.id.player_title);
+        topBar = findViewById(R.id.player_top_bar);
+        btnPrev = findViewById(R.id.btn_prev);
+        btnNext = findViewById(R.id.btn_next);
+        playerView = findViewById(R.id.player_view);
+
+        findViewById(R.id.btn_close).setOnClickListener((v) -> finish());
+        btnPrev.setOnClickListener((v) -> playIndex(index - 1));
+        btnNext.setOnClickListener((v) -> playIndex(index + 1));
 
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
+        // The queue is navigated with the big Previous/Next buttons in the top
+        // bar; hide the tiny built-in ones that stay greyed out.
+        playerView.setShowPreviousButton(false);
+        playerView.setShowNextButton(false);
+        playerView.setControllerVisibilityListener((PlayerView.ControllerVisibilityListener) (visibility) ->
+            topBar.setVisibility(visibility == View.VISIBLE ? View.VISIBLE : View.GONE));
+        playerView.setFullscreenButtonClickListener((isFullScreen) -> setFullscreen(isFullScreen));
+        playerView.setFullscreenButtonState(true);
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
@@ -116,8 +139,23 @@ public class PlayerActivity extends Activity {
         index = nextIndex;
         stage = STAGE_DIRECT;
         hlsRetries = 0;
+        playerTitle.setText(current().cleanTitle());
+        btnPrev.setAlpha(index > 0 ? 1f : 0.35f);
+        btnNext.setAlpha(index < Api.queue.size() - 1 ? 1f : 0.35f);
         long saved = prefs.getLong(progressKey(), 0);
         start(saved > 5000 ? saved : 0);
+    }
+
+    private void setFullscreen(boolean wantFullscreen) {
+        fullscreen = wantFullscreen;
+        setRequestedOrientation(wantFullscreen
+            ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        if (wantFullscreen) {
+            hideSystemBars();
+        } else {
+            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        }
     }
 
     private void start(long resumePositionMs) {
@@ -240,7 +278,7 @@ public class PlayerActivity extends Activity {
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) hideSystemBars();
+        if (hasFocus && fullscreen) hideSystemBars();
     }
 
     @Override

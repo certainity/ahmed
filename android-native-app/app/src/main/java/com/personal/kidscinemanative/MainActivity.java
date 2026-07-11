@@ -6,28 +6,33 @@ import android.content.res.Configuration;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.Gravity;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.ProgressBar;
-import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 public class MainActivity extends Activity {
     private static final String ALL_FOLDERS = "All folders";
 
+    private DrawerLayout drawerLayout;
     private VideoAdapter adapter;
+    private FolderAdapter folderAdapter;
     private ProgressBar loading;
     private TextView statusText;
-    private Spinner folderSpinner;
+    private TextView activeFolderLabel;
+    private final List<Video> filtered = new ArrayList<>();
     private String activeFolder = ALL_FOLDERS;
     private String query = "";
 
@@ -36,15 +41,28 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        drawerLayout = findViewById(R.id.drawer_layout);
         loading = findViewById(R.id.loading);
         statusText = findViewById(R.id.status_text);
-        folderSpinner = findViewById(R.id.folder_spinner);
+        activeFolderLabel = findViewById(R.id.active_folder_label);
+
+        findViewById(R.id.menu_button).setOnClickListener((v) -> drawerLayout.openDrawer(Gravity.START));
 
         RecyclerView grid = findViewById(R.id.video_grid);
         boolean landscape = getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         grid.setLayoutManager(new GridLayoutManager(this, landscape ? 3 : 2));
         adapter = new VideoAdapter(this::openPlayer);
         grid.setAdapter(adapter);
+
+        RecyclerView folderList = findViewById(R.id.folder_list);
+        folderList.setLayoutManager(new LinearLayoutManager(this));
+        folderAdapter = new FolderAdapter((folderName) -> {
+            activeFolder = folderName;
+            folderAdapter.setActive(folderName);
+            drawerLayout.closeDrawers();
+            applyFilter();
+        });
+        folderList.setAdapter(folderAdapter);
 
         EditText search = findViewById(R.id.search_input);
         search.addTextChangedListener(new TextWatcher() {
@@ -56,18 +74,6 @@ public class MainActivity extends Activity {
                 query = editable.toString().trim().toLowerCase(Locale.ROOT);
                 applyFilter();
             }
-        });
-
-        folderSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                Object item = parent.getItemAtPosition(position);
-                activeFolder = item == null ? ALL_FOLDERS : item.toString();
-                applyFilter();
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {}
         });
 
         if (Api.videos.isEmpty()) {
@@ -97,17 +103,22 @@ public class MainActivity extends Activity {
     }
 
     private void bindFolders() {
-        List<String> options = new ArrayList<>();
-        options.add(ALL_FOLDERS);
-        options.addAll(Api.collections);
-        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(
-            this, android.R.layout.simple_spinner_item, options);
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        folderSpinner.setAdapter(spinnerAdapter);
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Video video : Api.videos) {
+            Integer count = counts.get(video.collection);
+            counts.put(video.collection, count == null ? 1 : count + 1);
+        }
+        List<FolderAdapter.FolderEntry> entries = new ArrayList<>();
+        entries.add(new FolderAdapter.FolderEntry(ALL_FOLDERS, Api.videos.size()));
+        for (String name : Api.collections) {
+            Integer count = counts.get(name);
+            entries.add(new FolderAdapter.FolderEntry(name, count == null ? 0 : count));
+        }
+        folderAdapter.submit(entries, activeFolder);
     }
 
     private void applyFilter() {
-        List<Video> filtered = new ArrayList<>();
+        filtered.clear();
         for (Video video : Api.videos) {
             if (!ALL_FOLDERS.equals(activeFolder) && !activeFolder.equals(video.collection)) continue;
             if (!query.isEmpty()) {
@@ -117,18 +128,43 @@ public class MainActivity extends Activity {
             }
             filtered.add(video);
         }
-        Api.queue.clear();
-        Api.queue.addAll(filtered);
         adapter.submit(filtered);
+        activeFolderLabel.setText(ALL_FOLDERS.equals(activeFolder) ? "" : activeFolder);
         if (!Api.videos.isEmpty()) {
-            statusText.setText(filtered.size() + " videos");
+            statusText.setText(filtered.size() + " videos"
+                + (ALL_FOLDERS.equals(activeFolder) ? "" : " in " + activeFolder));
         }
     }
 
-    private void openPlayer(int index) {
-        if (index < 0 || index >= Api.queue.size()) return;
+    private void openPlayer(int indexInFiltered) {
+        if (indexInFiltered < 0 || indexInFiltered >= filtered.size()) return;
+        Video picked = filtered.get(indexInFiltered);
+
+        // Queue the whole folder of the picked video so that when one episode
+        // ends the next one in that folder plays automatically.
+        List<Video> folderQueue = new ArrayList<>();
+        for (Video video : Api.videos) {
+            if (video.collection.equals(picked.collection)) folderQueue.add(video);
+        }
+        int startIndex = folderQueue.indexOf(picked);
+        if (startIndex < 0) {
+            folderQueue = new ArrayList<>(filtered);
+            startIndex = indexInFiltered;
+        }
+
+        Api.queue.clear();
+        Api.queue.addAll(folderQueue);
         Intent intent = new Intent(this, PlayerActivity.class);
-        intent.putExtra(PlayerActivity.EXTRA_INDEX, index);
+        intent.putExtra(PlayerActivity.EXTRA_INDEX, startIndex);
         startActivity(intent);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (drawerLayout != null && drawerLayout.isDrawerOpen(Gravity.START)) {
+            drawerLayout.closeDrawers();
+            return;
+        }
+        super.onBackPressed();
     }
 }
