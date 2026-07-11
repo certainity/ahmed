@@ -249,6 +249,13 @@ function hasDecodedAudio(el) {
   return true;
 }
 
+function decodedVideoFrames(el) {
+  if (typeof el.getVideoPlaybackQuality === 'function') {
+    return el.getVideoPlaybackQuality().totalVideoFrames || 0;
+  }
+  return el.webkitDecodedFrameCount || 0;
+}
+
 async function waitForHlsManifest(url, signal, onTick) {
   const startedAt = Date.now();
   for (;;) {
@@ -275,6 +282,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   const [mode, setMode] = useState('browser');
   const [status, setStatus] = useState('');
   const [engine, setEngine] = useState('direct');
+  // 'copy' keeps the original video track and only converts audio (fast);
+  // 'encode' re-encodes the video too (slow, for undecodable codecs).
+  const [hlsVariant, setHlsVariant] = useState('copy');
   const resumeTimeRef = useRef(0);
   const soundSwitchedRef = useRef(false);
   const silentTicksRef = useRef(0);
@@ -314,6 +324,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
       if (soundSwitchedRef.current) return false;
       soundSwitchedRef.current = true;
       resumeTimeRef.current = player.currentTime || 0;
+      // If the video track was decoding (it played, just silently), the
+      // server only needs to convert the audio - much faster.
+      setHlsVariant(decodedVideoFrames(player) > 0 ? 'copy' : 'encode');
       setStatus(message);
       setEngine('hls');
       return true;
@@ -342,10 +355,19 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
       player.addEventListener('timeupdate', onSilenceCheck);
       player.play().then(() => setStatus('')).catch(() => setStatus('Press play to start.'));
     } else {
+      const hlsSrc = hlsVariant === 'copy' ? `${video.hlsUrl}&vcopy=1` : video.hlsUrl;
+      const fallBackToEncode = () => {
+        if (cancelled || hlsVariant !== 'copy') return false;
+        resumeTimeRef.current = player.currentTime || resumeAt || 0;
+        setStatus('Converting video for this device...');
+        setHlsVariant('encode');
+        return true;
+      };
+
       (async () => {
         try {
           setStatus('Fixing sound - preparing stream...');
-          await waitForHlsManifest(video.hlsUrl, aborter.signal, (seconds) => {
+          await waitForHlsManifest(hlsSrc, aborter.signal, (seconds) => {
             if (!cancelled) setStatus(`Fixing sound - preparing stream... ${seconds}s`);
           });
           if (cancelled) return;
@@ -354,7 +376,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           if (cancelled) return;
           if (!Hls.isSupported()) {
             if (player.canPlayType('application/vnd.apple.mpegurl')) {
-              player.src = video.hlsUrl;
+              player.src = hlsSrc;
               player.load();
               player.addEventListener('loadedmetadata', restore, { once: true });
               player.play().then(() => setStatus('')).catch(() => setStatus('Press play to start.'));
@@ -366,7 +388,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           hls = new Hls({ maxBufferLength: 30, maxBufferSize: 40 * 1000 * 1000, backBufferLength: 30 });
           let networkRetries = 0;
           let mediaRetries = 0;
-          hls.loadSource(video.hlsUrl);
+          hls.loadSource(hlsSrc);
           hls.attachMedia(player);
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
             if (cancelled) return;
@@ -386,10 +408,12 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               return;
             }
             hls.destroy();
+            if (fallBackToEncode()) return;
             setStatus(video.drivePreviewUrl ? 'The converted stream failed. Try Drive Preview.' : 'The converted stream failed. Try again later.');
           });
         } catch (error) {
           if (cancelled || error?.name === 'AbortError') return;
+          if (fallBackToEncode()) return;
           setStatus(error?.message || 'Could not prepare the sound-fixed stream.');
         }
       })();
@@ -406,7 +430,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
       player.removeAttribute('src');
       player.load();
     };
-  }, [video, mode, engine]);
+  }, [video, mode, engine, hlsVariant]);
 
   if (!video) return null;
 
@@ -469,7 +493,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               onError={() => {
                 if (engine === 'direct' && !soundSwitchedRef.current) {
                   soundSwitchedRef.current = true;
-                  resumeTimeRef.current = videoRef.current?.currentTime || 0;
+                  const player = videoRef.current;
+                  resumeTimeRef.current = player?.currentTime || 0;
+                  setHlsVariant(player && decodedVideoFrames(player) > 0 ? 'copy' : 'encode');
                   setStatus('Direct playback failed - switching to the converted stream...');
                   setEngine('hls');
                   return;
