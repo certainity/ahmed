@@ -18,10 +18,16 @@ import androidx.media3.common.PlaybackException;
 import androidx.media3.common.Player;
 import androidx.media3.common.Tracks;
 import androidx.media3.datasource.HttpDataSource;
+import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.ui.PlayerView;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class PlayerActivity extends Activity {
     public static final String EXTRA_INDEX = "index";
@@ -41,6 +47,8 @@ public class PlayerActivity extends Activity {
     private View topBar;
     private View belowContent;
     private View videoContainer;
+    private View playerHeader;
+    private DrawerLayout playerDrawer;
     private RecyclerView upNext;
     private UpNextAdapter upNextAdapter;
     private SharedPreferences prefs;
@@ -90,6 +98,26 @@ public class PlayerActivity extends Activity {
         upNext.setLayoutManager(new LinearLayoutManager(this));
         upNextAdapter = new UpNextAdapter(Api.queue, this::playIndex);
         upNext.setAdapter(upNextAdapter);
+
+        playerDrawer = findViewById(R.id.player_drawer);
+        playerHeader = findViewById(R.id.player_header);
+        findViewById(R.id.player_menu_btn).setOnClickListener((v) ->
+            playerDrawer.openDrawer(android.view.Gravity.START));
+        RecyclerView folderList = findViewById(R.id.player_folder_list);
+        folderList.setLayoutManager(new LinearLayoutManager(this));
+        FolderAdapter folderAdapter = new FolderAdapter(this::switchToFolder);
+        folderList.setAdapter(folderAdapter);
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (Video video : Api.videos) {
+            Integer count = counts.get(video.collection);
+            counts.put(video.collection, count == null ? 1 : count + 1);
+        }
+        List<FolderAdapter.FolderEntry> entries = new ArrayList<>();
+        for (String name : Api.collections) {
+            Integer count = counts.get(name);
+            entries.add(new FolderAdapter.FolderEntry(name, count == null ? 0 : count));
+        }
+        folderAdapter.submit(entries, Api.queue.isEmpty() ? "" : Api.queue.get(0).collection);
 
         player = new ExoPlayer.Builder(this).build();
         playerView.setPlayer(player);
@@ -153,6 +181,20 @@ public class PlayerActivity extends Activity {
         return Api.queue.get(index);
     }
 
+    private void switchToFolder(String folderName) {
+        playerDrawer.closeDrawers();
+        List<Video> folderQueue = new ArrayList<>();
+        for (Video video : Api.videos) {
+            if (video.collection.equals(folderName)) folderQueue.add(video);
+        }
+        if (folderQueue.isEmpty()) return;
+        saveProgress();
+        Api.queue.clear();
+        Api.queue.addAll(folderQueue);
+        upNextAdapter.notifyDataSetChanged();
+        playIndex(0);
+    }
+
     private void playIndex(int nextIndex) {
         if (nextIndex < 0 || nextIndex >= Api.queue.size()) {
             if (Api.queue.isEmpty()) finish();
@@ -181,6 +223,7 @@ public class PlayerActivity extends Activity {
         fullscreen = wantFullscreen;
         playerView.setFullscreenButtonState(wantFullscreen);
         belowContent.setVisibility(wantFullscreen ? View.GONE : View.VISIBLE);
+        playerHeader.setVisibility(wantFullscreen ? View.GONE : View.VISIBLE);
 
         ViewGroup.LayoutParams params = videoContainer.getLayoutParams();
         params.height = wantFullscreen
@@ -325,6 +368,10 @@ public class PlayerActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (playerDrawer != null && playerDrawer.isDrawerOpen(android.view.Gravity.START)) {
+            playerDrawer.closeDrawers();
+            return;
+        }
         if (fullscreen) {
             setFullscreen(false);
             return;

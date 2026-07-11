@@ -1,10 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.drawerlayout.widget.DrawerLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/player_drawer"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0F0F0F"
+    android:fitsSystemWindows="true">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
     android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/player_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="4dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="4dp"
+        android:paddingBottom="4dp">
+
+        <TextView
+            android:id="@+id/player_menu_btn"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:gravity="center"
+            android:text="☰"
+            android:textColor="#F1F1F1"
+            android:textSize="22sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/brand_badge"
+            android:paddingStart="9dp"
+            android:paddingEnd="9dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="▶"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:text="Kids Cinema"
+            android:textColor="#F1F1F1"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <com.personal.kidscinemanative.VideoFrameLayout
         android:id="@+id/video_container"
@@ -154,4 +202,32 @@
             android:clipToPadding="false"
             android:paddingBottom="16dp" />
     </LinearLayout>
-</LinearLayout>
+  </LinearLayout>
+
+  <LinearLayout
+      android:layout_width="300dp"
+      android:layout_height="match_parent"
+      android:layout_gravity="start"
+      android:background="#171717"
+      android:orientation="vertical">
+
+      <TextView
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:paddingStart="20dp"
+          android:paddingEnd="20dp"
+          android:paddingTop="18dp"
+          android:paddingBottom="10dp"
+          android:text="Folders"
+          android:textColor="#F1F1F1"
+          android:textSize="18sp"
+          android:textStyle="bold" />
+
+      <androidx.recyclerview.widget.RecyclerView
+          android:id="@+id/player_folder_list"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:clipToPadding="false"
+          android:paddingBottom="24dp" />
+  </LinearLayout>
+</androidx.drawerlayout.widget.DrawerLayout>
