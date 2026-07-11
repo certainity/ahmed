@@ -35,6 +35,7 @@ public class PlayerActivity extends Activity {
     private int stage = STAGE_DIRECT;
     private int hlsRetries = 0;
     private long lastStartPositionMs = 0;
+    private boolean enforceStartPosition = false;
 
     private final Runnable progressSaver = new Runnable() {
         @Override
@@ -58,11 +59,28 @@ public class PlayerActivity extends Activity {
         player.addListener(new Player.Listener() {
             @Override
             public void onPlaybackStateChanged(int state) {
-                if (state == Player.STATE_READY) setStatus("");
+                if (state == Player.STATE_READY) {
+                    setStatus("");
+                    // A still-converting stream looks "live" to ExoPlayer and
+                    // starts near the newest segment; jump back to where the
+                    // viewer actually wanted to start.
+                    if (enforceStartPosition) {
+                        enforceStartPosition = false;
+                        if (player.isCurrentMediaItemLive()
+                            && Math.abs(player.getCurrentPosition() - lastStartPositionMs) > 10000) {
+                            player.seekTo(lastStartPositionMs);
+                        }
+                    }
+                }
                 if (state == Player.STATE_ENDED) {
                     clearProgress();
                     playIndex(index + 1);
                 }
+            }
+
+            @Override
+            public void onIsPlayingChanged(boolean isPlaying) {
+                if (isPlaying) setStatus("");
             }
 
             @Override
@@ -105,6 +123,7 @@ public class PlayerActivity extends Activity {
     private void start(long resumePositionMs) {
         Video video = current();
         lastStartPositionMs = resumePositionMs;
+        enforceStartPosition = true;
         MediaItem item;
         if (stage == STAGE_DIRECT) {
             item = MediaItem.fromUri(video.streamUrl);
