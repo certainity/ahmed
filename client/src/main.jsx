@@ -196,6 +196,14 @@ const BookmarkIcon = ({ filled = false }) => (
     : <Svg stroke size={20}><path d="M6.8 4.8h10.4v15l-5.2-3.6-5.2 3.6v-15z" /></Svg>
 );
 const SyncIcon = () => <Svg size={20}><path d="M17.65 6.35A8 8 0 1 0 20 12h-2.1a6 6 0 1 1-1.6-4.06L13.5 10.5H20V4l-2.35 2.35z" /></Svg>;
+const GamesIcon = () => (
+  <Svg stroke size={20}>
+    <rect x="2.5" y="7" width="19" height="11" rx="5.5" />
+    <path d="M7.5 10.5v4M5.5 12.5h4" />
+    <circle cx="16" cy="11.5" r="0.6" />
+    <circle cx="18" cy="13.5" r="0.6" />
+  </Svg>
+);
 const CloseIcon = () => <Svg size={20}><path d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 12 12 5.7 5.7l1.4-1.4L12 10.6l4.9-4.9 1.4 1.4z" transform="translate(0,0)" /></Svg>;
 const PrevIcon = () => <Svg size={20}><path d="M6 6h2v12H6V6zm12 0v12l-9-6 9-6z" /></Svg>;
 const NextIcon = () => <Svg size={20}><path d="M16 6h2v12h-2V6zM6 6l9 6-9 6V6z" /></Svg>;
@@ -808,6 +816,12 @@ function App() {
           <button className="search-btn" type="submit" aria-label="Search"><SearchIcon /></button>
         </form>
         <div className="topbar-end">
+          {IS_MOVIE_SITE ? null : (
+            <a className="sync-btn games-link" href="/games/index.html">
+              <GamesIcon />
+              <span>Games</span>
+            </a>
+          )}
           <button className="sync-btn" onClick={refresh} disabled={loading} type="button">
             <SyncIcon />
             <span>{loading ? 'Syncing' : 'Sync'}</span>
