@@ -9,8 +9,11 @@ import {
   clamp,
   coarsePointer,
   drawCloud,
+  drawMirrorTiles,
   hearts,
   hintText,
+  imageReady,
+  loadImage,
   loop,
   makeCanvas,
   outlinedText,
@@ -19,6 +22,7 @@ import {
   touchPad,
   trackKeys
 } from './kit.js';
+import landscapeArt from './art/jump-bg.webp';
 
 const ROWS = 14;
 const GROUND = 12;
@@ -191,6 +195,7 @@ export function platformGame(arena, api) {
   const cv = makeCanvas(arena);
   const { ctx, view } = cv;
   const keys = trackKeys(s);
+  const landscape = loadImage(landscapeArt);
   const touch = coarsePointer();
   const pad = touch
     ? touchPad(arena, s, {
@@ -502,6 +507,13 @@ export function platformGame(arena, api) {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, view.w, view.h);
     const base = offsetY() + GROUND * T;
+    if (imageReady(landscape)) {
+      // The painting's meadow sits a little above its bottom edge, so let it run slightly past the ground line.
+      const h = base + T * 0.6;
+      const w = (landscape.naturalWidth / landscape.naturalHeight) * h;
+      drawMirrorTiles(ctx, landscape, { axis: 'x', size: w, cross: h, offset: camX * T * 0.2, length: view.w });
+      return;
+    }
     for (let i = -1; i < view.w / (T * 5) + 2; i++) {
       const off = (camX * T * 0.15) % (T * 9);
       drawCloud(ctx, i * T * 9 - off + ((i * 37) % 5) * T, offsetY() + T * (1.5 + (i % 3)), T / 30);

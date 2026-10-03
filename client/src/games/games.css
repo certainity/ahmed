@@ -158,14 +158,22 @@
 .pr-tile-big {
   grid-template-columns: 1fr;
   align-content: start;
-  justify-items: start;
-  min-height: 250px;
-  padding: 22px;
-  background:
-    radial-gradient(circle at 88% 18%, #ffffff8c 0 40px, transparent 41px),
-    var(--tint);
+  gap: 0;
+  padding: 0;
+  min-height: 0;
+  overflow: hidden;
 }
-.pr-tile-big .pr-tile-glyph { width: 112px; height: 112px; font-size: 64px; }
+.pr-tile-cover {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-bottom: 4px solid var(--ink);
+  background: var(--paper);
+}
+.pr-tile-big .pr-tile-text { padding: 16px 20px 20px; }
 .pr-tile-big .pr-tile-name { font-size: 32px; }
 .pr-grown-ups { font-size: 15px; color: var(--ink-soft); max-width: 66ch; margin: 0; }
 
@@ -505,8 +513,7 @@
   .pr-round-btn { width: 48px; }
   .pr-score { font-size: 22px; padding: 0 12px 0 8px; }
   .pr-stage-end { gap: 6px; }
-  .pr-tile-glyph, .pr-tile-big .pr-tile-glyph { width: 72px; height: 72px; font-size: 40px; }
-  .pr-tile-big { grid-template-columns: auto minmax(0, 1fr); min-height: 0; align-items: center; }
+  .pr-tile-glyph { width: 72px; height: 72px; font-size: 40px; }
   .pr-tile-name, .pr-tile-big .pr-tile-name { font-size: 24px; }
   .pr-pad-btn { width: 64px; height: 64px; }
   .pr-pad-right .pr-pad-btn { width: 78px; height: 78px; }

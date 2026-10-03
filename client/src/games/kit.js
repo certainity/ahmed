@@ -324,6 +324,40 @@ export function pointIn(e, el) {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
 
+const imageCache = new Map();
+
+export function loadImage(src) {
+  let img = imageCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    imageCache.set(src, img);
+  }
+  return img;
+}
+
+export const imageReady = (img) => Boolean(img && img.complete && img.naturalWidth);
+
+// Tiles an image along one axis, flipping every other copy so the seams mirror instead of jumping.
+export function drawMirrorTiles(ctx, img, { axis, size, cross, offset, length, origin = 0 }) {
+  const period = size * 2;
+  const start = -(((offset % period) + period) % period);
+  for (let p = start, k = 0; p < length; p += size, k++) {
+    ctx.save();
+    if (axis === 'x') {
+      ctx.translate(p + (k % 2 ? size : 0), origin);
+      ctx.scale(k % 2 ? -1 : 1, 1);
+      ctx.drawImage(img, 0, 0, size, cross);
+    } else {
+      ctx.translate(origin, p + (k % 2 ? size : 0));
+      ctx.scale(1, k % 2 ? -1 : 1);
+      ctx.drawImage(img, 0, 0, cross, size);
+    }
+    ctx.restore();
+  }
+}
+
 export function drawSky(ctx, view, top, bottom) {
   const g = ctx.createLinearGradient(0, 0, 0, view.h);
   g.addColorStop(0, top);

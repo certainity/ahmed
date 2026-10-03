@@ -1,4 +1,5 @@
-import { INK, PAPER, Sound, clamp, hearts, hintText, loop, makeCanvas, outlinedText, pick, pointIn, rand, say, scope, trackKeys } from './kit.js';
+import { INK, PAPER, Sound, clamp, hearts, hintText, imageReady, loadImage, loop, makeCanvas, outlinedText, pick, pointIn, rand, say, scope, trackKeys } from './kit.js';
+import seaArt from './art/fish-bg.webp';
 
 const STAGE_SIZES = [16, 25, 36];
 const STAGE_NEED = [10, 16, 22];
@@ -16,6 +17,7 @@ export function fishGame(arena, api) {
   const cv = makeCanvas(arena);
   const { ctx, view, canvas } = cv;
   const keys = trackKeys(s);
+  const sea = loadImage(seaArt);
 
   let level = 1;
   let lives = MAX_LIVES;
@@ -268,6 +270,14 @@ export function fishGame(arena, api) {
   }
 
   function drawBackground(t) {
+    if (imageReady(sea)) {
+      // Cover-fit, anchored to the bottom so the painted sea floor stays on screen.
+      const scale = Math.max(view.w / sea.naturalWidth, view.h / sea.naturalHeight);
+      const w = sea.naturalWidth * scale;
+      const h = sea.naturalHeight * scale;
+      ctx.drawImage(sea, (view.w - w) / 2, view.h - h, w, h);
+      return;
+    }
     const g = ctx.createLinearGradient(0, 0, 0, view.h);
     g.addColorStop(0, '#55c6f0');
     g.addColorStop(1, '#0d5aa0');

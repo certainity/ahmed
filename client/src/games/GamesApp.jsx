@@ -5,11 +5,14 @@ import { balloonGame, catchGame, countGame, memoryGame, paintGame } from './clas
 import { fishGame } from './fishFeast.js';
 import { platformGame } from './jumpQuest.js';
 import { shooterGame } from './skyPatrol.js';
+import fishCover from './art/fish-cover.webp';
+import jumpCover from './art/jump-cover.webp';
+import skyCover from './art/sky-cover.webp';
 
 export const GAMES = [
-  { id: 'fish', shelf: 'arcade', name: 'Fish Feast', skill: 'Eat and grow', blurb: 'Eat smaller fish, dodge the grumpy big ones, grow into the biggest fish in the sea.', glyph: '🐠', tone: 'ocean', start: fishGame },
-  { id: 'jump', shelf: 'arcade', name: "Pip's Jump Quest", skill: 'Run and jump', blurb: 'Run, jump on blobs, bump the ? blocks for coins and reach the flag.', glyph: '🚩', tone: 'sun', start: platformGame },
-  { id: 'sky', shelf: 'arcade', name: 'Sky Patrol', skill: 'Fly and shoot', blurb: 'Fly over the islands, pop robot drones and beat the big airship.', glyph: '✈️', tone: 'berry', start: shooterGame },
+  { id: 'fish', shelf: 'arcade', name: 'Fish Feast', skill: 'Eat and grow', blurb: 'Eat smaller fish, dodge the grumpy big ones, grow into the biggest fish in the sea.', glyph: '🐠', cover: fishCover, tone: 'ocean', start: fishGame },
+  { id: 'jump', shelf: 'arcade', name: "Pip's Jump Quest", skill: 'Run and jump', blurb: 'Run, jump on blobs, bump the ? blocks for coins and reach the flag.', glyph: '🚩', cover: jumpCover, tone: 'sun', start: platformGame },
+  { id: 'sky', shelf: 'arcade', name: 'Sky Patrol', skill: 'Fly and shoot', blurb: 'Fly over the islands, pop robot drones and beat the big airship.', glyph: '✈️', cover: skyCover, tone: 'berry', start: shooterGame },
   { id: 'balloons', shelf: 'little', name: 'Balloon Pop', skill: 'Letters A–Z', blurb: 'Pop balloons and hear every letter.', glyph: '🎈', tone: 'berry', start: balloonGame },
   { id: 'pairs', shelf: 'little', name: 'Animal Pairs', skill: 'Memory', blurb: 'Flip two cards to find matching animals.', glyph: '🐼', tone: 'ocean', start: memoryGame },
   { id: 'catch', shelf: 'little', name: 'Fruit Catch', skill: 'Hand and eye', blurb: 'Slide the basket and catch falling fruit.', glyph: '🧺', tone: 'leaf', start: catchGame },
@@ -60,7 +63,11 @@ const SoundIcon = ({ muted }) => (
 function GameTile({ game, big }) {
   return (
     <a className={`pr-tile${big ? ' pr-tile-big' : ''}`} href={`#games/${game.id}`} data-tone={game.tone}>
-      <span className="pr-tile-glyph" aria-hidden="true">{game.glyph}</span>
+      {game.cover ? (
+        <img className="pr-tile-cover" src={game.cover} alt="" width="1280" height="720" loading="lazy" decoding="async" />
+      ) : (
+        <span className="pr-tile-glyph" aria-hidden="true">{game.glyph}</span>
+      )}
       <span className="pr-tile-text">
         <span className="pr-tile-name">{game.name}</span>
         <span className="pr-tile-skill">{game.skill}</span>

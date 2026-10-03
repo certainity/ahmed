@@ -1,4 +1,24 @@
-import { INK, PAPER, Sound, clamp, hearts, hintText, loop, makeCanvas, outlinedText, pick, pointIn, rand, say, scope, trackKeys } from './kit.js';
+import {
+  INK,
+  PAPER,
+  Sound,
+  clamp,
+  drawMirrorTiles,
+  hearts,
+  hintText,
+  imageReady,
+  loadImage,
+  loop,
+  makeCanvas,
+  outlinedText,
+  pick,
+  pointIn,
+  rand,
+  say,
+  scope,
+  trackKeys
+} from './kit.js';
+import oceanArt from './art/sky-bg.webp';
 
 const MAX_HP = 5;
 const MAX_POWER = 4;
@@ -10,6 +30,7 @@ export function shooterGame(arena, api) {
   const cv = makeCanvas(arena);
   const { ctx, view, canvas } = cv;
   const keys = trackKeys(s);
+  const ocean = loadImage(oceanArt);
 
   let stage = 1;
   let hp = MAX_HP;
@@ -439,6 +460,13 @@ export function shooterGame(arena, api) {
 
   function drawBackground() {
     const u = unit();
+    if (imageReady(ocean)) {
+      const w = view.w;
+      const h = (ocean.naturalHeight / ocean.naturalWidth) * w;
+      // Scrolling down means the offset runs backwards through the tiles.
+      drawMirrorTiles(ctx, ocean, { axis: 'y', size: h, cross: w, offset: -scroll, length: view.h });
+      return;
+    }
     ctx.fillStyle = '#3aa3e3';
     ctx.fillRect(0, 0, view.w, view.h);
     ctx.strokeStyle = 'rgba(255,255,255,0.18)';
