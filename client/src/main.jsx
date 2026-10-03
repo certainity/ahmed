@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -620,7 +620,8 @@ function Sidebar({ folders, activeFolder, onNavigate, counts, mini, drawerOpen, 
     { key: 'all', label: 'Home', icon: <HomeIcon /> },
     { key: 'shorts', label: 'Shorts', icon: <ShortsIcon /> },
     { key: 'continue', label: 'Continue', icon: <HistoryIcon /> },
-    { key: 'favorites', label: 'Saved', icon: <BookmarkIcon /> }
+    { key: 'favorites', label: 'Saved', icon: <BookmarkIcon /> },
+    ...(IS_MOVIE_SITE ? [] : [{ key: 'games', label: 'Games', icon: <GamesIcon /> }])
   ];
 
   return (
@@ -771,6 +772,11 @@ function App() {
   }
 
   function navigate(folderKey) {
+    if (folderKey === 'games') {
+      setDrawerOpen(false);
+      window.location.hash = 'games';
+      return;
+    }
     setActiveFolder(folderKey);
     setSelectedVideo(null);
     setDrawerOpen(false);
@@ -817,7 +823,7 @@ function App() {
         </form>
         <div className="topbar-end">
           {IS_MOVIE_SITE ? null : (
-            <a className="sync-btn games-link" href="/games/index.html">
+            <a className="sync-btn games-link" href="#games">
               <GamesIcon />
               <span>Games</span>
             </a>
@@ -907,6 +913,50 @@ function App() {
   );
 }
 
+const GamesApp = lazy(() => import('./games/GamesApp.jsx'));
+
+function useGamesRoute() {
+  const read = () => {
+    if (IS_MOVIE_SITE) return null;
+    const match = window.location.hash.match(/^#games(?:\/([\w-]+))?$/);
+    return match ? { gameId: match[1] || null } : null;
+  };
+  const [route, setRoute] = useState(read);
+  useEffect(() => {
+    const onHash = () => setRoute(read());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return route;
+}
+
+function Root() {
+  const games = useGamesRoute();
+  const open = Boolean(games);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    document.querySelectorAll('video').forEach((video) => video.pause());
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+      document.title = 'Kids Drive Cinema';
+    };
+  }, [open]);
+
+  return (
+    <>
+      <App />
+      {open ? (
+        <Suspense fallback={<div className="games-loading"><span className="loader" /></div>}>
+          <GamesApp gameId={games.gameId} />
+        </Suspense>
+      ) : null}
+    </>
+  );
+}
+
 const container = document.getElementById('root');
 const root = container._reactRoot || (container._reactRoot = createRoot(container));
-root.render(<App />);
+root.render(<Root />);
