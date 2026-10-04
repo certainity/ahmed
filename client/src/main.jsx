@@ -278,6 +278,9 @@ function VideoThumbnail({ video, eager = false }) {
 
 function WatchView({ video, queue, progress, setProgress, onPick, onClose, favorite, onToggleFavorite, autoplay, setAutoplay }) {
   const videoRef = useRef(null);
+  const cinemaButtonRef = useRef(null);
+  const exitCinemaRef = useRef(null);
+  const [cinemaMode, setCinemaMode] = useState(false);
   const [mode, setMode] = useState('browser');
   const [status, setStatus] = useState('Loading your video…');
   const [retryCount, setRetryCount] = useState(0);
@@ -313,6 +316,25 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
     window.addEventListener('pagehide', flush);
     return () => { flush(); window.removeEventListener('pagehide', flush); };
   }, [video.id, mode]);
+
+  useEffect(() => {
+    if (!cinemaMode) return;
+    document.body.classList.add('cinema-mode-active');
+    exitCinemaRef.current?.focus({ preventScroll: true });
+    // Handle Escape before the watch page's normal back-to-library shortcut.
+    const exitOnEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setCinemaMode(false);
+    };
+    window.addEventListener('keydown', exitOnEscape, true);
+    return () => {
+      document.body.classList.remove('cinema-mode-active');
+      window.removeEventListener('keydown', exitOnEscape, true);
+      cinemaButtonRef.current?.focus({ preventScroll: true });
+    };
+  }, [cinemaMode]);
 
   if (!video) return null;
 
@@ -362,8 +384,14 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   return (
     <section className="watch-layout">
       <div className="watch-primary">
-        <button className="back-button" onClick={() => { remember(true); onClose(); }} type="button"><BackIcon /> Back to videos</button>
-        <div className="player-box">
+        <div className="watch-player-toolbar">
+          <button className="back-button" onClick={() => { remember(true); onClose(); }} type="button"><BackIcon /> Back to videos</button>
+          <button ref={cinemaButtonRef} className="cinema-mode-button" aria-pressed={cinemaMode} aria-controls="watch-player" onClick={() => setCinemaMode(true)} type="button">
+            <img src="/assets/cinema/tv-cinema-mode-icon-v01.png" alt="" width="30" height="20" />
+            Cinema mode
+          </button>
+        </div>
+        <div id="watch-player" className={`player-box${cinemaMode ? ' cinema-player' : ''}`}>
           {mode === 'drive' && video.drivePreviewUrl ? (
             <iframe
               className="drive-frame"
@@ -377,8 +405,10 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               ref={videoRef}
               poster={video.thumbnailUrl}
               controls
+              controlsList="nofullscreen"
               playsInline
               preload="metadata"
+              onDoubleClick={(event) => { event.preventDefault(); setCinemaMode(true); }}
               onPlaying={() => { setStatus(''); setPlaybackError(false); }}
               onWaiting={() => setStatus('Buffering your video…')}
               onTimeUpdate={() => remember()}
@@ -391,6 +421,12 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               }}
             />
           )}
+          {cinemaMode ? (
+            <div className="cinema-overlay">
+              <span className="cinema-mode-label">Cinema mode</span>
+              <button ref={exitCinemaRef} className="exit-cinema-button" onClick={() => setCinemaMode(false)} type="button">Exit Cinema mode</button>
+            </div>
+          ) : null}
         </div>
 
         <h1 className="watch-title">{cleanTitle(video.title)}</h1>

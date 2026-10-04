@@ -1,0 +1,50 @@
+{
+  "batch": "F:\\Agent\\kids-drive-cinema\\2026-10-04-tv-cinema-v01",
+  "assets": [
+    {
+      "filename": "tv-cinema-mode-concept-v01.png",
+      "purpose": "Browser-window Cinema mode layout reference",
+      "dimensions": [
+        1672,
+        941
+      ],
+      "originalDimensions": [
+        1672,
+        941
+      ],
+      "transparency": "opaque-concept",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac2533a-1edc-83ec-80b8-406a1b167702",
+      "project": "Kids Cinema web TV player",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-tv-cinema-v01\\originals\\tv-cinema-mode-concept-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-tv-cinema-v01\\ready\\other\\tv-cinema-mode-concept-v01.png",
+      "runtimePath": null,
+      "sha256": "33b6db8120b472b7727c3088ba08bcd6abd86b21b4a4f2fef46bcb343c7a06f9",
+      "processing": "untouched"
+    },
+    {
+      "filename": "tv-cinema-mode-icon-v01.png",
+      "purpose": "Stationary Cinema mode button icon",
+      "dimensions": [
+        96,
+        64
+      ],
+      "originalDimensions": [
+        1536,
+        1024
+      ],
+      "transparency": "true-alpha",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac2533a-1edc-83ec-80b8-406a1b167702",
+      "project": "Kids Cinema web TV player",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-tv-cinema-v01\\originals\\tv-cinema-mode-icon-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-tv-cinema-v01\\ready\\icons\\tv-cinema-mode-icon-v01.png",
+      "runtimePath": "F:\\codex\\kids-drive-cinema-google-folder\\kids-drive-cinema\\client\\public\\assets\\cinema\\tv-cinema-mode-icon-v01.png",
+      "sha256": "727eda50ef5b1081c84c7038983a2fd0ae78f1a27590e79a04a62e9228397394",
+      "processing": "PNG scaled for UI; untouched original retained"
+    }
+  ],
+  "verification": "Dimensions and true transparent alpha verified. Icon edges and readability inspected on white and navy backgrounds; original, ready PNGs and manifest paths verified."
+}
