@@ -5,5 +5,6 @@ server/.env
 server/service-account.json
 server/cache-thumbnails/
 server/cache-hls/
+server/cache-library/
 .DS_Store
 npm-debug.log*

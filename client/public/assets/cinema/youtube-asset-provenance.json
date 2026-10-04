@@ -1,0 +1,74 @@
+{
+  "batch": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01",
+  "assets": [
+    {
+      "filename": "kids-video-home-concept-v01.png",
+      "purpose": "Desktop video-library design reference",
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "transparency": "opaque-concept",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac23b5b-ebac-83ee-9102-32a9cc11bcfe",
+      "project": "Kids Cinema web",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\originals\\kids-video-home-concept-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\ready\\other\\kids-video-home-concept-v01.png",
+      "sha256": "c78d3af9c690c6a8ae094d5d1beaaa1de6e700330974241ac2ed932a8f8bd281",
+      "processing": "untouched"
+    },
+    {
+      "filename": "kids-shorts-concept-v01.png",
+      "purpose": "Phone vertical Shorts design reference",
+      "dimensions": [
+        1024,
+        1536
+      ],
+      "transparency": "opaque-concept",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac23bad-2a80-83ee-af18-1a4c1cc32bac",
+      "project": "Kids Cinema web",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\originals\\kids-shorts-concept-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\ready\\other\\kids-shorts-concept-v01.png",
+      "sha256": "572f6ef78de49bcff28867110b69cec2307f0719e331964b4095eb6d62b59fb1",
+      "processing": "untouched"
+    },
+    {
+      "filename": "kids-shorts-icon-v01.png",
+      "purpose": "Original Shorts navigation mark; stationary UI icon",
+      "dimensions": [
+        192,
+        192
+      ],
+      "transparency": "true-alpha",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac23bd1-faec-83ec-b6ab-a2783d238be4",
+      "project": "Kids Cinema web",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\originals\\kids-shorts-icon-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\ready\\icons\\kids-shorts-icon-v01.png",
+      "sha256": "06dcb232a70800bae656d32737c3662c6554792aa97ce1ab54c52c278be03d03",
+      "processing": "PNG resized for small UI use; original preserved"
+    },
+    {
+      "filename": "cinema-projector-web-v02.png",
+      "purpose": "Optimized existing projector branding and thumbnail fallback",
+      "dimensions": [
+        256,
+        256
+      ],
+      "transparency": "true-alpha",
+      "creationDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceChat": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac2350c-98e4-83ee-a2fb-ed202b32527a",
+      "project": "Kids Cinema web",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\originals\\cinema-projector-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-youtube-shorts-v01\\ready\\ui\\cinema-projector-web-v02.png",
+      "sha256": "7913ac8405919d6699dd2327fcc9fba7eee23010ab925caeb42c69bc74f42cb1",
+      "processing": "PNG resized for faster UI loading; original preserved in previous batch"
+    }
+  ],
+  "verification": "PNG dimensions, true-alpha bounds, full silhouettes and light/dark background appearance inspected. Separate original PNGs retained."
+}

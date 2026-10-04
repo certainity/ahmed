@@ -10,6 +10,8 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { readLibrarySnapshot, writeLibrarySnapshot } from './library-cache.js';
+import { playbackBufferReady } from './hls-buffer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,6 +84,7 @@ app.use(helmet({
 app.use(compression());
 app.use(morgan('tiny'));
 const apiCors = cors({
+  exposedHeaders: ['ETag'],
   origin(origin, callback) {
     if (!origin) return callback(null, true);
     if (CLIENT_ORIGIN === '*' || CLIENT_ORIGIN.split(',').map((s) => s.trim()).includes(origin)) {
@@ -98,6 +101,11 @@ const libraryConfig = {
 };
 
 const videoCaches = new Map();
+const LIBRARY_CACHE_DIR = path.join(__dirname, 'cache-library');
+
+function snapshotScope(libraryKey) {
+  return JSON.stringify([getLibraryFolderId(libraryKey), INCLUDE_SUBFOLDERS, MAX_SCAN_DEPTH, MAX_FOLDERS]);
+}
 
 const hlsJobs = new Map();
 const hlsLastErrors = new Map();
@@ -122,7 +130,8 @@ function getLibraryKey(req) {
 
 function getLibraryCache(libraryKey) {
   if (!videoCaches.has(libraryKey)) {
-    videoCaches.set(libraryKey, emptyCache());
+    const saved = readLibrarySnapshot(path.join(LIBRARY_CACHE_DIR, `${libraryKey}.json`), snapshotScope(libraryKey));
+    videoCaches.set(libraryKey, saved || emptyCache());
   }
   return videoCaches.get(libraryKey);
 }
@@ -222,9 +231,9 @@ function canPrewarmHls(video) {
   return video.canDownload && size > 0 && size <= HLS_PREWARM_MAX_BYTES;
 }
 
-function publicVideo(video) {
+function publicVideo(video, libraryKey) {
   const { _thumbnailLink, ...safeVideo } = video;
-  return safeVideo;
+  return { ...safeVideo, hasThumbnail: Boolean(_thumbnailLink || fs.existsSync(getThumbnailPath(libraryKey, video.id))) };
 }
 
 function getHlsVariant(req) {
@@ -277,24 +286,20 @@ function isHlsComplete(paths) {
   return fs.readFileSync(paths.playlist, 'utf8').includes('#EXT-X-ENDLIST');
 }
 
-function getRequiredHlsSegments(req) {
-  const requestedStart = Number(req.query.start || 0);
-  const startSeconds = Number.isFinite(requestedStart) && requestedStart > 0 ? requestedStart : 0;
-  const initialSegments = HLS_START_SEGMENTS;
-  if (!startSeconds) return initialSegments;
-
-  const resumeBufferSeconds = Number(process.env.HLS_RESUME_BUFFER_SECONDS || 120);
-  const segmentSeconds = Number(process.env.HLS_SEGMENT_SECONDS || 2);
-  return Math.max(initialSegments, Math.ceil((startSeconds + resumeBufferSeconds) / segmentSeconds));
-}
-
-async function waitForHlsBuffer(paths, minSegments, timeoutMs = 30000) {
+async function waitForHlsBuffer(paths, startSeconds, timeoutMs = 30000) {
+  const ready = () => {
+    try {
+      return playbackBufferReady(fs.readFileSync(paths.playlist, 'utf8'), startSeconds,
+        Math.max(2, Number(process.env.HLS_START_BUFFER_SECONDS || 4)),
+        Math.max(4, Number(process.env.HLS_RESUME_BUFFER_SECONDS || 12)));
+    } catch { return false; }
+  };
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    if (isHlsComplete(paths) || countHlsSegments(paths) >= minSegments) return true;
-    await sleep(500);
+    if (ready()) return true;
+    await sleep(250);
   }
-  return isHlsComplete(paths) || countHlsSegments(paths) >= minSegments;
+  return ready();
 }
 
 function ffmpegHeaderString(headers) {
@@ -309,6 +314,8 @@ function probeVideoCodec(streamUrl, jobKey) {
   return new Promise((resolve) => {
     const child = spawn(FFPROBE_PATH, [
       '-v', 'error',
+      '-probesize', '524288',
+      '-analyzeduration', '1000000',
       '-select_streams', 'v:0',
       '-show_entries', 'stream=codec_name',
       '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -326,7 +333,9 @@ function probeVideoCodec(streamUrl, jobKey) {
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       finish(null);
-    }, 15000);
+    // A slow Drive probe must not hold playback for 15 seconds. Unknown
+    // codecs safely use the existing H.264 conversion path.
+    }, Math.max(1000, Number(process.env.FFPROBE_TIMEOUT_MS || 3000)));
 
     child.stdout.on('data', (chunk) => {
       output += chunk.toString();
@@ -627,6 +636,8 @@ async function scanApprovedFolderTree(libraryKey) {
     try {
       children = await listDriveChildren(folderContext.id);
     } catch (error) {
+      // A failed root lookup is a connection error, not an empty video library.
+      if (folderContext.depth === 0) throw error;
       const folderLabel = folderContext.path.length ? folderContext.path.join(' / ') : 'Main folder';
       warnings.push(`Could not scan ${folderLabel}: ${error.message || 'Google Drive error'}`);
       return;
@@ -685,6 +696,11 @@ function refreshLibrary(libraryKey) {
         folderCount: scanResult.folderCount,
         warnings: scanResult.warnings
       });
+      try {
+        writeLibrarySnapshot(path.join(LIBRARY_CACHE_DIR, `${libraryKey}.json`), snapshotScope(libraryKey), getLibraryCache(libraryKey));
+      } catch (error) {
+        console.error('Could not persist the library catalogue:', error.message);
+      }
       return getLibraryCache(libraryKey).videos;
     })
     .finally(() => libraryRefreshes.delete(libraryKey));
@@ -801,30 +817,14 @@ async function authHeadersFor(url) {
   throw err;
 }
 
-function sendPlaceholderThumbnail(res, title = 'Movie', status = 'placeholder') {
-  const safeTitle = String(title).replace(/[<&>"']/g, '');
-  const words = safeTitle.split(/\s+/).slice(0, 4).join(' ');
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
-      <defs>
-        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stop-color="#8b5cf6"/>
-          <stop offset="45%" stop-color="#ec4899"/>
-          <stop offset="100%" stop-color="#22c55e"/>
-        </linearGradient>
-      </defs>
-      <rect width="960" height="540" rx="44" fill="url(#bg)"/>
-      <circle cx="150" cy="105" r="54" fill="rgba(255,255,255,.22)"/>
-      <circle cx="830" cy="410" r="92" fill="rgba(255,255,255,.16)"/>
-      <path d="M417 225c0-22 24-36 43-24l106 65c18 11 18 37 0 48l-106 65c-19 12-43-2-43-24V225z" fill="white" fill-opacity=".92"/>
-      <text x="480" y="456" text-anchor="middle" font-size="44" font-family="Arial, sans-serif" font-weight="700" fill="white">${words || 'Movie Time'}</text>
-    </svg>`;
-
+function sendPlaceholderThumbnail(res, _title, status = 'placeholder') {
+  // Original verified PNG from Agent Assets; do not fabricate a video thumbnail.
   res.status(200).set({
-    'Content-Type': 'image/svg+xml; charset=utf-8',
     'Cache-Control': 'private, max-age=60',
     'X-Thumbnail-Status': status
-  }).send(svg);
+  }).sendFile(path.resolve(__dirname, process.env.NODE_ENV === 'production'
+    ? '../client/dist/assets/cinema/cinema-projector-web-v02.png'
+    : '../client/public/assets/cinema/cinema-projector-web-v02.png'));
 }
 
 app.get('/health', (_req, res) => {
@@ -848,6 +848,13 @@ app.get('/api/videos', async (req, res, next) => {
     const query = String(req.query.q || '').trim().toLowerCase();
     let videos = await listVideos({ force, libraryKey });
     const videoCache = getLibraryCache(libraryKey);
+    const refreshing = libraryRefreshes.has(libraryKey);
+    const etag = `W/"catalogue-v2-${libraryKey}-${videoCache.fetchedAt}-${refreshing ? 1 : 0}-${Buffer.from(query).toString('base64url')}"`;
+    res.set({ ETag: etag, 'Cache-Control': 'private, no-cache' });
+    if (!force && req.get('If-None-Match') === etag) {
+      res.status(304).end();
+      return;
+    }
 
     if (query) {
       videos = videos.filter((video) =>
@@ -862,6 +869,7 @@ app.get('/api/videos', async (req, res, next) => {
 
     res.json({
       count: videos.length,
+      refreshing,
       refreshedAt: new Date(videoCache.fetchedAt).toISOString(),
       library: {
         key: libraryKey,
@@ -872,7 +880,7 @@ app.get('/api/videos', async (req, res, next) => {
         collections,
         warnings: videoCache.warnings
       },
-      videos: videos.map(publicVideo)
+      videos: videos.map((video) => publicVideo(video, libraryKey))
     });
   } catch (error) {
     next(error);
@@ -999,6 +1007,7 @@ app.get('/api/stream/:id', async (req, res, next) => {
     });
 
     const upstream = Readable.fromWeb(response.body);
+    upstream.on('error', (error) => res.destroy(error));
     res.on('close', () => upstream.destroy());
     upstream.pipe(res);
   } catch (error) {
@@ -1034,10 +1043,11 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       return;
     }
 
-    const requiredSegments = getRequiredHlsSegments(req);
+    const requestedStart = Number(req.query.start || 0);
+    const startSeconds = Number.isFinite(requestedStart) ? Math.max(0, requestedStart) : 0;
     const bufferReady = await waitForHlsBuffer(
       paths,
-      requiredSegments,
+      startSeconds,
       HLS_BUFFER_TIMEOUT_MS
     );
     if (!bufferReady) {
@@ -1045,7 +1055,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
         status: 'preparing',
         message: 'Preparing enough video before playback starts.',
         segmentsReady: countHlsSegments(paths),
-        segmentsNeeded: requiredSegments
+        resumeAt: startSeconds
       });
       return;
     }

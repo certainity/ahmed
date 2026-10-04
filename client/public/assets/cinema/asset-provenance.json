@@ -1,0 +1,49 @@
+{
+  "project": "Kids Drive Cinema",
+  "batch": "2026-10-04-library-refresh-v01",
+  "centralLibrary": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01",
+  "assets": [
+    {
+      "filename": "cinema-projector-v01.png",
+      "purpose": "Original projector mascot for welcome, branding and missing-thumbnail fallback",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "transparency": "verified real alpha: 0..255",
+      "createdDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceUrl": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588/c/6ac2350c-98e4-83ee-a2fb-ed202b32527a",
+      "project": "Kids Drive Cinema",
+      "screen": "Library / player",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\originals\\cinema-projector-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\ready\\ui\\cinema-projector-v01.png",
+      "sha256": "591e9ac3ce3511f29164d4ebb88e1c0174dfc93347321c98a9d4fe3056e4ee16",
+      "states": "stationary decoration"
+    },
+    {
+      "filename": "cinema-library-concept-v01.png",
+      "purpose": "Desktop library UI concept; reference only, not rendered as UI",
+      "dimensions": {
+        "width": 1536,
+        "height": 1024
+      },
+      "transparency": "opaque concept",
+      "createdDate": "2026-10-04",
+      "source": "ChatGPT > Agent Assets",
+      "sourceUrl": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588/c/6ac2341a-d598-83ee-9688-2ad860715ed1",
+      "project": "Kids Drive Cinema",
+      "screen": "Library / player",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\originals\\cinema-library-concept-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\ready\\other\\cinema-library-concept-v01.png",
+      "sha256": "faa62f6237da5fddb766d06ea93c6936f62f9d308e7eeb827a247f95e66c6d86",
+      "states": "desktop reference"
+    }
+  ],
+  "qa": {
+    "originalsPreserved": true,
+    "alphaVerified": true,
+    "edges": "No cropped object edges; full illustration visible",
+    "backgroundCheck": "Light and dark at actual 160px display scale"
+  }
+}

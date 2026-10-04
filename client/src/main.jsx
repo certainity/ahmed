@@ -1,6 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { cleanTitle, continueWatching, playbackQueue, isShortVideo } from './media-utils.js';
+import { readCatalogue, saveCatalogue } from './catalogue-store.js';
+import { mountPlayback, warmPlayback } from './playback.js';
+import ShortsFeed from './shorts.jsx';
+import './youtube-theme.css';
+
+const PROJECTOR_ART = '/assets/cinema/cinema-projector-web-v02.png';
 
 const STORAGE_KEYS = {
   favorites: 'kids-drive-cinema:favorites:v2',
@@ -18,7 +25,7 @@ const APP_COPY = IS_MOVIE_SITE
     }
   : {
       title: 'Kids Cinema',
-      search: 'Search shows, cartoons, or folders',
+      search: 'Search videos',
       empty: 'No videos found'
     };
 
@@ -33,6 +40,7 @@ function apiUrl(path) {
 function normalizeVideo(video) {
   return {
     ...video,
+    searchText: [video.title, cleanTitle(video.title), video.filename, video.collection, video.folderPathLabel].filter(Boolean).join(' ').toLowerCase(),
     thumbnailUrl: apiUrl(video.thumbnailUrl),
     streamUrl: apiUrl(video.streamUrl),
     hlsUrl: apiUrl(video.hlsUrl)
@@ -42,14 +50,17 @@ function normalizeVideo(video) {
 function readJson(key, fallback) {
   try {
     const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : fallback;
+    const value = stored ? JSON.parse(stored) : fallback;
+    if (Array.isArray(fallback)) return Array.isArray(value) ? value : fallback;
+    if (fallback && typeof fallback === 'object') return value && typeof value === 'object' && !Array.isArray(value) ? value : fallback;
+    return typeof value === typeof fallback ? value : fallback;
   } catch {
     return fallback;
   }
 }
 
 function writeJson(key, value) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* Playback still works when storage is full or private. */ }
 }
 
 function formatDuration(ms) {
@@ -74,15 +85,6 @@ function formatSize(bytes) {
   return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
-function cleanTitle(title = '') {
-  return String(title)
-    .replace(/\./g, ' ')
-    .replace(/\s+/g, ' ')
-    .replace(/\b(x264|x265|h264|h265|hevc|aac|webdl|webrip|bluray|hmax|galaxytv|edge2020)\b/gi, '')
-    .replace(/\s+/g, ' ')
-    .trim() || title;
-}
-
 function episodeLabel(video) {
   const title = `${video.title || ''} ${video.filename || ''}`;
   const match = title.match(/\bS(\d{1,2})E(\d{1,3})\b/i);
@@ -92,7 +94,7 @@ function episodeLabel(video) {
 }
 
 function isShort(video) {
-  return Boolean(video.durationMs && video.durationMs <= 8 * 60 * 1000);
+  return isShortVideo(video);
 }
 
 function progressPercent(video, progress) {
@@ -123,27 +125,54 @@ function useVideos() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [refreshedAt, setRefreshedAt] = useState('');
+  const requestRef = useRef(null);
+  const pollRef = useRef(null);
+  const snapshotRef = useRef(null);
 
   async function load(refresh = false) {
+    requestRef.current?.abort();
+    clearTimeout(pollRef.current);
+    const aborter = new AbortController();
+    requestRef.current = aborter;
+    const deadline = setTimeout(() => aborter.abort('timeout'), 45000);
     setLoading(true);
     setError('');
     try {
-      const response = await fetch(apiUrl(`/api/videos${refresh ? '?refresh=1' : ''}`), { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.detail || payload.error || 'Could not load the Drive folder.');
-      const nextVideos = (payload.videos || []).map(normalizeVideo);
-      setVideos(nextVideos);
-      setLibrary(payload.library || { collections: [], warnings: [] });
+      const headers = snapshotRef.current?.etag && !refresh ? { 'If-None-Match': snapshotRef.current.etag } : {};
+      const response = await fetch(apiUrl(`/api/videos${refresh ? '?refresh=1' : ''}`), { cache: 'no-cache', headers, signal: aborter.signal });
+      const payload = response.status === 304 ? snapshotRef.current?.payload : await response.json().catch(() => ({}));
+      if (!payload || (!response.ok && response.status !== 304)) throw new Error(payload?.detail || payload?.error || 'Could not load the Drive folder.');
+      if (response.status !== 304) {
+        snapshotRef.current = { etag: response.headers.get('etag'), payload };
+        saveCatalogue(API_LIBRARY, snapshotRef.current);
+      }
+      if (response.status !== 304) setVideos((payload.videos || []).map(normalizeVideo));
+      setLibrary({ ...(payload.library || { collections: [], warnings: [] }), refreshing: Boolean(payload.refreshing) });
       setRefreshedAt(payload.refreshedAt || new Date().toISOString());
+      if (payload.refreshing) pollRef.current = setTimeout(() => load(false), 3000);
     } catch (err) {
-      setError(err.message || 'Could not load the Drive folder.');
+      if (aborter.signal.aborted && aborter.signal.reason !== 'timeout') return;
+      setError(aborter.signal.reason === 'timeout' ? 'The Drive folder is taking longer than expected. Try refreshing.' : err.message || 'Could not load the Drive folder.');
     } finally {
-      setLoading(false);
+      clearTimeout(deadline);
+      if (requestRef.current === aborter) setLoading(false);
     }
   }
 
   useEffect(() => {
-    load(false);
+    let cancelled = false;
+    readCatalogue(API_LIBRARY).then(snapshot => {
+      if (cancelled) return;
+      if (snapshot && Array.isArray(snapshot.payload.videos)) {
+        performance.mark('cinema-catalogue-cache-ready');
+        snapshotRef.current = snapshot;
+        setVideos(snapshot.payload.videos.map(normalizeVideo));
+        setLibrary(snapshot.payload.library || { collections: [], warnings: [] });
+        setRefreshedAt(snapshot.payload.refreshedAt);
+      }
+      load(false);
+    });
+    return () => { cancelled = true; requestRef.current?.abort(); clearTimeout(pollRef.current); };
   }, []);
 
   return { videos, library, loading, error, refreshedAt, refresh: () => load(true) };
@@ -178,12 +207,7 @@ const SearchIcon = () => (
   </Svg>
 );
 const HomeIcon = () => <Svg><path d="M12 3.2l8.5 7.3h-2.3V20h-4.7v-5.6h-3v5.6H5.8v-9.5H3.5L12 3.2z" /></Svg>;
-const ShortsIcon = () => (
-  <Svg stroke size={22}>
-    <rect x="7.2" y="3" width="9.6" height="18" rx="4.8" />
-    <path d="M10.6 9.5l4.2 2.5-4.2 2.5v-5z" fill="currentColor" stroke="none" />
-  </Svg>
-);
+const ShortsIcon = () => <img className="shorts-mark" src="/assets/cinema/kids-shorts-icon-v01.png" alt="" />;
 const HistoryIcon = () => (
   <Svg stroke size={22}>
     <circle cx="12" cy="12" r="8.2" />
@@ -196,7 +220,10 @@ const BookmarkIcon = ({ filled = false }) => (
     : <Svg stroke size={20}><path d="M6.8 4.8h10.4v15l-5.2-3.6-5.2 3.6v-15z" /></Svg>
 );
 const SyncIcon = () => <Svg size={20}><path d="M17.65 6.35A8 8 0 1 0 20 12h-2.1a6 6 0 1 1-1.6-4.06L13.5 10.5H20V4l-2.35 2.35z" /></Svg>;
-const CloseIcon = () => <Svg size={20}><path d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 12 12 5.7 5.7l1.4-1.4L12 10.6l4.9-4.9 1.4 1.4z" transform="translate(0,0)" /></Svg>;
+const CloseIcon = () => <Svg stroke size={20}><path d="m6 6 12 12M18 6 6 18" /></Svg>;
+const FolderIcon = () => <Svg stroke size={20}><path d="M3 7V5h6l2 2h10v13H3V7z" /></Svg>;
+const BackIcon = () => <Svg stroke size={20}><path d="M19 12H5m6-6-6 6 6 6" /></Svg>;
+const PlayIcon = () => <Svg size={24}><path d="M8 4v16l12-8L8 4z" /></Svg>;
 const PrevIcon = () => <Svg size={20}><path d="M6 6h2v12H6V6zm12 0v12l-9-6 9-6z" /></Svg>;
 const NextIcon = () => <Svg size={20}><path d="M16 6h2v12h-2V6zM6 6l9 6-9 6V6z" /></Svg>;
 const ExternalIcon = () => (
@@ -240,54 +267,22 @@ function Avatar({ name, size = 36 }) {
   );
 }
 
+function VideoThumbnail({ video, eager = false }) {
+  const [failed, setFailed] = useState(false);
+  const fallback = failed || video.hasThumbnail === false;
+  return <img src={fallback ? PROJECTOR_ART : video.thumbnailUrl} className={fallback ? 'fallback-thumbnail' : ''}
+    alt="" loading={eager ? 'eager' : 'lazy'} decoding="async" onError={() => setFailed(true)} />;
+}
+
 /* ---------- watch page ---------- */
 
-function hasDecodedAudio(el) {
-  if (typeof el.webkitAudioDecodedByteCount === 'number') return el.webkitAudioDecodedByteCount > 0;
-  if (typeof el.mozHasAudio === 'boolean') return el.mozHasAudio;
-  if (el.audioTracks && typeof el.audioTracks.length === 'number') return el.audioTracks.length > 0;
-  return true;
-}
-
-function decodedVideoFrames(el) {
-  if (typeof el.getVideoPlaybackQuality === 'function') {
-    return el.getVideoPlaybackQuality().totalVideoFrames || 0;
-  }
-  return el.webkitDecodedFrameCount || 0;
-}
-
-async function waitForHlsManifest(url, signal, onTick) {
-  const startedAt = Date.now();
-  for (;;) {
-    const response = await fetch(url, { cache: 'no-store', signal });
-    if (response.status === 200) return;
-    const payload = await response.json().catch(() => null);
-    if (response.status === 429) {
-      throw new Error(payload?.message || 'Google Drive download quota is exceeded for this file. Try again later or use Drive Preview.');
-    }
-    if (response.status !== 202) {
-      throw new Error(payload?.message || 'Could not prepare the sound-fixed stream. Try Drive Preview.');
-    }
-    if (Date.now() - startedAt > 120000) {
-      throw new Error('Preparing the stream is taking too long. Try again or use Drive Preview.');
-    }
-    onTick?.(Math.round((Date.now() - startedAt) / 1000));
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-  }
-}
-
-function WatchView({ video, queue, progress, setProgress, onPick, onClose, favorite, onToggleFavorite }) {
+function WatchView({ video, queue, progress, setProgress, onPick, onClose, favorite, onToggleFavorite, autoplay, setAutoplay }) {
   const videoRef = useRef(null);
   const [mode, setMode] = useState('browser');
-  const [status, setStatus] = useState('');
-  const [engine, setEngine] = useState('direct');
-  // 'copy' keeps the original video track and only converts audio (fast);
-  // 'encode' re-encodes the video too (slow, for undecodable codecs).
-  const [hlsVariant, setHlsVariant] = useState('copy');
+  const [status, setStatus] = useState('Loading your video…');
+  const [retryCount, setRetryCount] = useState(0);
+  const [playbackError, setPlaybackError] = useState(false);
   const resumeTimeRef = useRef(0);
-  const soundSwitchedRef = useRef(false);
-  const silentTicksRef = useRef(0);
   const lastProgressSaveRef = useRef(0);
 
   const currentIndex = queue.findIndex((item) => item.id === video?.id);
@@ -306,150 +301,40 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
 
   useEffect(() => {
     const player = videoRef.current;
-    if (!player || !video || mode !== 'browser') return undefined;
-
-    let hls = null;
-    let cancelled = false;
-    const aborter = new AbortController();
-
-    const saved = progress[video.id]?.currentTime;
-    const resumeAt = resumeTimeRef.current || (saved && saved > 5 && Number.isFinite(saved) ? saved : 0);
+    if (!player || mode !== 'browser') return;
+    const resumeAt = resumeTimeRef.current || (continueWatching(video, progress) ? progress[video.id].currentTime : 0);
     resumeTimeRef.current = 0;
+    setPlaybackError(false);
+    return mountPlayback(player, video, { resumeAt, onStatus: setStatus, onFailure: () => setPlaybackError(true) });
+  }, [video.id, mode, retryCount]);
 
-    const restore = () => {
-      if (resumeAt) player.currentTime = resumeAt;
-    };
-
-    const switchEngine = (message) => {
-      if (soundSwitchedRef.current) return false;
-      soundSwitchedRef.current = true;
-      resumeTimeRef.current = player.currentTime || 0;
-      // If the video track was decoding (it played, just silently), the
-      // server only needs to convert the audio - much faster.
-      setHlsVariant(decodedVideoFrames(player) > 0 ? 'copy' : 'encode');
-      setStatus(message);
-      setEngine('hls');
-      return true;
-    };
-
-    const onSilenceCheck = () => {
-      if (player.paused || player.muted || player.currentTime < 2.5) return;
-      if (hasDecodedAudio(player)) {
-        player.removeEventListener('timeupdate', onSilenceCheck);
-        return;
-      }
-      silentTicksRef.current += 1;
-      if (silentTicksRef.current >= 2) {
-        player.removeEventListener('timeupdate', onSilenceCheck);
-        switchEngine('No sound in this file for browsers - switching to the sound-fixed stream...');
-      }
-    };
-
-    player.volume = 1;
-    player.muted = false;
-
-    if (engine === 'direct') {
-      player.src = video.streamUrl;
-      player.load();
-      player.addEventListener('loadedmetadata', restore, { once: true });
-      player.addEventListener('timeupdate', onSilenceCheck);
-      player.play().then(() => setStatus('')).catch(() => setStatus('Press play to start.'));
-    } else {
-      const hlsSrc = hlsVariant === 'copy' ? `${video.hlsUrl}&vcopy=1` : video.hlsUrl;
-      const fallBackToEncode = () => {
-        if (cancelled || hlsVariant !== 'copy') return false;
-        resumeTimeRef.current = player.currentTime || resumeAt || 0;
-        setStatus('Converting video for this device...');
-        setHlsVariant('encode');
-        return true;
-      };
-
-      (async () => {
-        try {
-          setStatus('Fixing sound - preparing stream...');
-          await waitForHlsManifest(hlsSrc, aborter.signal, (seconds) => {
-            if (!cancelled) setStatus(`Fixing sound - preparing stream... ${seconds}s`);
-          });
-          if (cancelled) return;
-
-          const { default: Hls } = await import('hls.js');
-          if (cancelled) return;
-          if (!Hls.isSupported()) {
-            if (player.canPlayType('application/vnd.apple.mpegurl')) {
-              player.src = hlsSrc;
-              player.load();
-              player.addEventListener('loadedmetadata', restore, { once: true });
-              player.play().then(() => setStatus('')).catch(() => setStatus('Press play to start.'));
-              return;
-            }
-            throw new Error('This browser cannot play the converted stream. Try Drive Preview.');
-          }
-
-          hls = new Hls({ maxBufferLength: 30, maxBufferSize: 40 * 1000 * 1000, backBufferLength: 30 });
-          let networkRetries = 0;
-          let mediaRetries = 0;
-          hls.loadSource(hlsSrc);
-          hls.attachMedia(player);
-          hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            if (cancelled) return;
-            restore();
-            player.play().then(() => setStatus('')).catch(() => setStatus('Press play to start.'));
-          });
-          hls.on(Hls.Events.ERROR, (_event, data) => {
-            if (cancelled || !data?.fatal) return;
-            if (data.type === 'networkError' && networkRetries < 3) {
-              networkRetries += 1;
-              setTimeout(() => { if (!cancelled) hls.startLoad(); }, 1500);
-              return;
-            }
-            if (data.type === 'mediaError' && mediaRetries < 2) {
-              mediaRetries += 1;
-              hls.recoverMediaError();
-              return;
-            }
-            hls.destroy();
-            if (fallBackToEncode()) return;
-            setStatus(video.drivePreviewUrl ? 'The converted stream failed. Try Drive Preview.' : 'The converted stream failed. Try again later.');
-          });
-        } catch (error) {
-          if (cancelled || error?.name === 'AbortError') return;
-          if (fallBackToEncode()) return;
-          setStatus(error?.message || 'Could not prepare the sound-fixed stream.');
-        }
-      })();
-    }
-
-    return () => {
-      cancelled = true;
-      remember(true);
-      aborter.abort();
-      player.removeEventListener('loadedmetadata', restore);
-      player.removeEventListener('timeupdate', onSilenceCheck);
-      if (hls) hls.destroy();
-      player.pause();
-      player.removeAttribute('src');
-      player.load();
-    };
-  }, [video, mode, engine, hlsVariant]);
+  useEffect(() => {
+    const flush = () => remember(true);
+    window.addEventListener('pagehide', flush);
+    return () => { flush(); window.removeEventListener('pagehide', flush); };
+  }, [video.id, mode]);
 
   if (!video) return null;
 
   function remember(force = false) {
     const player = videoRef.current;
-    if (!player || mode !== 'browser') return;
+    if (!player || mode !== 'browser' || player.readyState === 0) return;
     // Saving progress re-renders the page; throttle it so timeupdate
     // (4x/second) does not overwhelm low-power devices like TVs.
     const now = Date.now();
     if (!force && now - lastProgressSaveRef.current < 5000) return;
     lastProgressSaveRef.current = now;
+    // Capture before React can detach/reset the media element on navigation.
+    const snapshot = {
+      currentTime: player.currentTime || 0,
+      duration: video.durationMs / 1000 || (Number.isFinite(player.duration) ? player.duration : 0),
+      completed: player.ended,
+      updatedAt: now
+    };
     setProgress((current) => {
       const nextProgress = {
         ...current,
-        [video.id]: {
-          currentTime: player.currentTime || 0,
-          duration: player.duration || video.durationMs / 1000 || 0,
-          updatedAt: Date.now()
-        }
+        [video.id]: snapshot
       };
       writeJson(STORAGE_KEYS.progress, nextProgress);
       return nextProgress;
@@ -459,14 +344,25 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   function chooseMode(nextMode) {
     remember(true);
     setStatus('');
+    setPlaybackError(false);
     setMode(nextMode);
   }
+
+  function retryPlayback() {
+    resumeTimeRef.current = videoRef.current?.currentTime || progress[video.id]?.currentTime || 0;
+    setPlaybackError(false);
+    setStatus('Loading your video…');
+    setRetryCount(count => count + 1);
+  }
+
+  function pickEpisode(item) { remember(true); if (item) onPick(item); }
 
   const collection = video.collection || video.folderPath?.[0] || 'Main folder';
 
   return (
     <section className="watch-layout">
       <div className="watch-primary">
+        <button className="back-button" onClick={() => { remember(true); onClose(); }} type="button"><BackIcon /> Back to videos</button>
         <div className="player-box">
           {mode === 'drive' && video.drivePreviewUrl ? (
             <iframe
@@ -483,24 +379,15 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               controls
               playsInline
               preload="metadata"
+              onPlaying={() => { setStatus(''); setPlaybackError(false); }}
+              onWaiting={() => setStatus('Buffering your video…')}
               onTimeUpdate={() => remember()}
               onPause={() => remember(true)}
               onSeeked={() => remember(true)}
               onEnded={() => {
                 remember(true);
-                if (next) onPick(next);
-              }}
-              onError={() => {
-                if (engine === 'direct' && !soundSwitchedRef.current) {
-                  soundSwitchedRef.current = true;
-                  const player = videoRef.current;
-                  resumeTimeRef.current = player?.currentTime || 0;
-                  setHlsVariant(player && decodedVideoFrames(player) > 0 ? 'copy' : 'encode');
-                  setStatus('Direct playback failed - switching to the converted stream...');
-                  setEngine('hls');
-                  return;
-                }
-                setStatus(video.drivePreviewUrl ? 'This file could not be streamed. Try Drive Preview.' : 'This file could not be streamed right now.');
+                if (autoplay && next) pickEpisode(next);
+                else setStatus('Finished watching. Pick another video when you’re ready.');
               }}
             />
           )}
@@ -512,9 +399,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           <div className="watch-channel">
             <Avatar name={collection} size={40} />
             <div className="channel-text">
-              <span className="channel-name">{video.folderPathLabel}</span>
+              <span className="channel-name">{cleanTitle(collection)}</span>
               <span className="channel-sub">
-                {video.directPlayable ? 'Browser ready' : 'Drive preview'}
+                {formatDuration(video.durationMs)}
                 {video.size ? ` · ${formatSize(video.size)}` : ''}
               </span>
             </div>
@@ -526,14 +413,13 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
 
           <div className="watch-actions">
             <div className="mode-toggle" aria-label="Player mode">
-              <button className={mode === 'browser' ? 'active' : ''} onClick={() => chooseMode('browser')} type="button">Player</button>
-              <button className={mode === 'drive' ? 'active' : ''} onClick={() => chooseMode('drive')} type="button" disabled={!video.drivePreviewUrl}>Drive</button>
+              <button className={mode === 'browser' ? 'active' : ''} aria-pressed={mode === 'browser'} onClick={() => chooseMode('browser')} type="button">Player</button>
+              <button className={mode === 'drive' ? 'active' : ''} aria-pressed={mode === 'drive'} onClick={() => chooseMode('drive')} type="button" disabled={!video.drivePreviewUrl}>Drive preview</button>
             </div>
-            <button className="chip-btn" onClick={() => previous && onPick(previous)} disabled={!previous} type="button"><PrevIcon /> Previous</button>
-            <button className="chip-btn" onClick={() => next && onPick(next)} disabled={!next} type="button">Next <NextIcon /></button>
+            <button className="chip-btn" onClick={() => pickEpisode(previous)} disabled={!previous} type="button"><PrevIcon /> Previous</button>
+            <button className="chip-btn" onClick={() => pickEpisode(next)} disabled={!next} type="button">Next <NextIcon /></button>
+            {mode === 'browser' ? <button className="chip-btn" onClick={retryPlayback} type="button"><SyncIcon /> Retry playback</button> : null}
             {video.driveViewUrl ? <a className="chip-btn" href={video.driveViewUrl} target="_blank" rel="noreferrer"><ExternalIcon /> Drive</a> : null}
-            {video.driveDownloadUrl ? <a className="chip-btn" href={video.driveDownloadUrl} target="_blank" rel="noreferrer"><DownloadIcon /> Download</a> : null}
-            <button className="chip-btn" onClick={onClose} type="button"><CloseIcon /> Close</button>
           </div>
         </div>
 
@@ -542,24 +428,25 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
             {episodeLabel(video)}
             {video.width && video.height ? ` • ${video.width}x${video.height}` : ''}
             {video.size ? ` • ${formatSize(video.size)}` : ''}
-            {engine === 'hls' && mode === 'browser' ? ' • Sound fix on' : ''}
           </p>
-          <p className="desc-line">{status || 'Streaming from your approved Google Drive folder.'}</p>
+          <p className={`desc-line ${playbackError ? 'playback-error' : ''}`} role="status" aria-live="polite">{status || 'Playing from your Google Drive folder.'}</p>
+          {playbackError ? <button className="chip-btn" onClick={retryPlayback} type="button">Try again</button> : null}
         </div>
       </div>
 
       <aside className="up-next">
         <h3>Up next</h3>
+        <label className="autoplay-control"><input type="checkbox" checked={autoplay} onChange={event => setAutoplay(event.target.checked)} /> Play next automatically</label>
         <div className="up-next-list">
           {upNext.map((item) => (
-            <button key={item.id} className="up-next-item" onClick={() => onPick(item)} type="button">
+            <button key={item.id} className="up-next-item" onClick={() => pickEpisode(item)} type="button">
               <span className="up-next-thumb">
-                <img src={item.thumbnailUrl} alt="" loading="lazy" decoding="async" />
+                <VideoThumbnail video={item} />
                 <span className="duration-badge">{episodeLabel(item)}</span>
               </span>
               <span className="up-next-text">
                 <span className="up-next-title">{cleanTitle(item.title)}</span>
-                <span className="up-next-meta">{item.folderPathLabel}</span>
+                <span className="up-next-meta">{cleanTitle(item.collection)}</span>
               </span>
             </button>
           ))}
@@ -571,38 +458,39 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
 
 /* ---------- home grid ---------- */
 
-function VideoCard({ video, onPick, progressValue, favorite, onToggleFavorite }) {
+const VideoCard = React.memo(function VideoCard({ video, onPick, progressValue, favorite, onToggleFavorite, eager }) {
   const collection = video.collection || video.folderPath?.[0] || 'Main folder';
   return (
     <article className="video-card">
       <div className="thumb-wrap">
-        <button className="thumbnail-button" onClick={() => onPick(video)} type="button" aria-label={`Play ${video.title}`}>
-          <img src={video.thumbnailUrl} alt="" loading="lazy" decoding="async" />
-          <span className="duration-badge">{episodeLabel(video)}</span>
+        <button className="thumbnail-button" onMouseEnter={() => warmPlayback(video)} onFocus={() => warmPlayback(video)} onClick={() => onPick(video)} type="button" aria-label={`Play ${cleanTitle(video.title)}`}>
+          <VideoThumbnail video={video} eager={eager} />
+          <span className="play-overlay"><PlayIcon /></span>
+          <span className="duration-badge">{formatDuration(video.durationMs)}</span>
           {progressValue > 0 ? <span className="progress-bar" style={{ width: `${progressValue}%` }} /> : null}
-        </button>
-        <button
-          className={`card-save ${favorite ? 'active' : ''}`}
-          onClick={() => onToggleFavorite(video.id)}
-          type="button"
-          title={favorite ? 'Remove from Saved' : 'Save'}
-        >
-          <BookmarkIcon filled={favorite} />
         </button>
       </div>
       <div className="card-body">
         <Avatar name={collection} size={36} />
         <div className="card-text">
           <button className="title-button" onClick={() => onPick(video)} type="button">{cleanTitle(video.title)}</button>
-          <p className="card-meta">{collection}</p>
-          <p className="card-submeta">
-            {video.directPlayable ? 'Browser ready' : 'Drive preview'}
-            {video.size ? ` · ${formatSize(video.size)}` : ''}
-          </p>
+          <p className="card-meta">{cleanTitle(collection)}</p>
         </div>
+        <button className={`card-save ${favorite ? 'active' : ''}`} onClick={() => onToggleFavorite(video.id)} type="button"
+          aria-label={`${favorite ? 'Unsave' : 'Save'} ${cleanTitle(video.title)}`} aria-pressed={favorite}><BookmarkIcon filled={favorite} /></button>
       </div>
     </article>
   );
+});
+
+function ShortsShelf({ videos, onPick }) {
+  return <section className="shorts-shelf">
+    <div className="shelf-heading"><h2><ShortsIcon /> Shorts</h2><button type="button" onClick={() => onPick(videos[0])}>See all <NextIcon /></button></div>
+    <div className="shorts-shelf-list">{videos.slice(0, 6).map(video => <button key={video.id} className="shorts-card" type="button" onClick={() => onPick(video)} onMouseEnter={() => warmPlayback(video)} aria-label={`Watch short ${cleanTitle(video.title)}`}>
+      <span className="shorts-card-image"><VideoThumbnail video={video} /><span className="duration-badge">{formatDuration(video.durationMs)}</span></span>
+      <span className="shorts-card-copy"><strong>{cleanTitle(video.title)}</strong><span>{cleanTitle(video.collection)}</span></span>
+    </button>)}</div>
+  </section>;
 }
 
 /* ---------- sidebar ---------- */
@@ -644,8 +532,8 @@ function Sidebar({ folders, activeFolder, onNavigate, counts, mini, drawerOpen, 
               type="button"
               title={folder.name}
             >
-              <Avatar name={folder.name} size={24} />
-              <span className="nav-label">{folder.name}</span>
+              <FolderIcon />
+              <span className="nav-label">{cleanTitle(folder.name)}</span>
               <span className="nav-count">{folder.count}</span>
             </button>
           ))}
@@ -664,16 +552,19 @@ const SORT_CHIPS = [
   { key: 'long', label: 'Longest' }
 ];
 
-const GRID_BATCH = 48;
+const GRID_BATCH = 18;
 
 function App() {
   const { videos, library, loading, error, refreshedAt, refresh } = useVideos();
   const [query, setQuery] = useState('');
+  const deferredQuery = useDeferredValue(query);
   const [activeFolder, setActiveFolder] = useState('all');
   const [sortMode, setSortMode] = useState('title');
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [shortStartId, setShortStartId] = useState(null);
   const [progress, setProgress] = useState(() => readJson(STORAGE_KEYS.progress, {}));
   const [favorites, setFavorites] = useState(() => readJson(STORAGE_KEYS.favorites, []));
+  const [autoplay, setAutoplayState] = useState(() => readJson('kids-drive-cinema:autoplay:v1', false));
   const [sidebarMini, setSidebarMini] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(GRID_BATCH);
@@ -694,18 +585,22 @@ function App() {
       if (entries.some((entry) => entry.isIntersecting)) {
         setVisibleCount((count) => count + GRID_BATCH);
       }
-    }, { rootMargin: '1500px 0px' });
+    }, { rootMargin: '600px 0px' });
     observer.observe(sentinel);
     return () => observer.disconnect();
   });
 
   useEffect(() => {
     function onKey(event) {
-      if (event.key === 'Escape') setSelectedVideo(null);
+      if (event.key === 'Escape' && selectedVideo) {
+        setSelectedVideo(null);
+        setActiveFolder('all');
+        window.history.pushState({}, '', '#home');
+      }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [selectedVideo]);
 
   const folders = useMemo(() => {
     const counts = new Map();
@@ -720,17 +615,19 @@ function App() {
 
   const counts = useMemo(() => ({
     all: videos.length,
-    continue: videos.filter((video) => progress[video.id]?.currentTime > 5).length,
-    favorites: favorites.length,
+    continue: videos.filter((video) => continueWatching(video, progress)).length,
+    favorites: videos.filter(video => favorites.includes(video.id)).length,
     shorts: videos.filter(isShort).length
   }), [videos, progress, favorites]);
 
+  const filterProgress = activeFolder === 'continue' ? progress : null;
+  const filterFavorites = activeFolder === 'favorites' ? favorites : null;
   const filteredVideos = useMemo(() => {
-    const search = query.trim().toLowerCase();
+    const search = deferredQuery.trim().toLowerCase();
     let list = videos;
 
     if (activeFolder === 'continue') {
-      list = list.filter((video) => progress[video.id]?.currentTime > 5);
+      list = list.filter((video) => continueWatching(video, progress));
     } else if (activeFolder === 'favorites') {
       list = list.filter((video) => favorites.includes(video.id));
     } else if (activeFolder === 'shorts') {
@@ -740,32 +637,79 @@ function App() {
     }
 
     if (search) {
-      list = list.filter((video) => [
-        video.title,
-        cleanTitle(video.title),
-        video.filename,
-        video.collection,
-        video.folderPathLabel
-      ].filter(Boolean).join(' ').toLowerCase().includes(search));
+      list = list.filter(video => video.searchText.includes(search));
     }
 
-    return sortVideos(list, sortMode);
-  }, [videos, activeFolder, query, sortMode, progress, favorites]);
+    return activeFolder === 'continue' ? [...list].sort((a, b) => progress[b.id].updatedAt - progress[a.id].updatedAt) : sortVideos(list, sortMode);
+  }, [videos, activeFolder, deferredQuery, sortMode, filterProgress, filterFavorites]);
 
-  const queue = filteredVideos.length ? filteredVideos : videos;
+  const shortVideos = useMemo(() => sortVideos(videos.filter(isShort), 'title'), [videos]);
+  const featuredFolders = useMemo(() => {
+    const preferred = folders.filter(folder => /^(Learn$|Alphablocks.*S01|Masha.*S01|Tom and Jerry)/i.test(cleanTitle(folder.name)));
+    return (preferred.length ? preferred : folders).slice(0, 4);
+  }, [folders]);
 
-  function toggleFavorite(id) {
+  const queue = useMemo(() => selectedVideo ? playbackQueue(selectedVideo, videos) : [], [selectedVideo, videos]);
+
+  function setAutoplay(value) { setAutoplayState(value); writeJson('kids-drive-cinema:autoplay:v1', value); }
+
+  const toggleFavorite = useCallback((id) => {
     setFavorites((current) => {
       const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
       writeJson(STORAGE_KEYS.favorites, next);
       return next;
     });
+  }, []);
+
+  const pickVideo = useCallback(video => {
+    setSelectedVideo(video);
+    window.history.pushState({ video: video.id }, '', `#watch=${encodeURIComponent(video.id)}`);
+    warmPlayback(video);
+  }, []);
+
+  function pickShort(video) {
+    setSelectedVideo(null);
+    setActiveFolder('shorts');
+    setQuery('');
+    setShortStartId(video?.id || shortVideos[0]?.id);
+    window.history.pushState({}, '', `#shorts=${encodeURIComponent(video?.id || shortVideos[0]?.id || '')}`);
   }
 
+  const saveShortProgress = useCallback((video, snapshot) => {
+    setProgress(current => {
+      const next = { ...current, [video.id]: snapshot };
+      writeJson(STORAGE_KEYS.progress, next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const restoreRoute = () => {
+      const [kind, encodedId = ''] = window.location.hash.slice(1).split('=');
+      let id;
+      try { id = decodeURIComponent(encodedId); } catch { id = ''; }
+      if (kind === 'watch') setSelectedVideo(videos.find(video => video.id === id) || null);
+      else {
+        setSelectedVideo(null);
+        if (kind === 'shorts') { setActiveFolder('shorts'); setShortStartId(id); }
+        else if (kind === 'search') { setActiveFolder('all'); setQuery(id); }
+        else if (kind === 'folder') setActiveFolder(videos.some(video => video.collection === id) ? id : 'all');
+        else setActiveFolder(['continue', 'favorites'].includes(kind) ? kind : 'all');
+      }
+    };
+    restoreRoute();
+    window.addEventListener('popstate', restoreRoute);
+    window.addEventListener('hashchange', restoreRoute);
+    return () => { window.removeEventListener('popstate', restoreRoute); window.removeEventListener('hashchange', restoreRoute); };
+  }, [videos]);
+
   function navigate(folderKey) {
+    if (folderKey === 'shorts') { pickShort(); setDrawerOpen(false); return; }
     setActiveFolder(folderKey);
+    setQuery('');
     setSelectedVideo(null);
     setDrawerOpen(false);
+    window.history.pushState({}, '', `#${folderKey === 'all' ? 'home' : ['continue', 'favorites'].includes(folderKey) ? folderKey : `folder=${encodeURIComponent(folderKey)}`}`);
   }
 
   function toggleMenu() {
@@ -775,27 +719,28 @@ function App() {
 
   function handleSearch(value) {
     setQuery(value);
-    if (selectedVideo) setSelectedVideo(null);
+    if (selectedVideo || activeFolder === 'shorts') { setSelectedVideo(null); setActiveFolder('all'); }
+    window.history.replaceState({}, '', value ? `#search=${encodeURIComponent(value)}` : '#home');
   }
 
   const headingLabel = activeFolder === 'all'
-    ? 'All folders'
+    ? 'Videos'
     : activeFolder === 'continue'
       ? 'Continue watching'
       : activeFolder === 'favorites'
         ? 'Saved videos'
         : activeFolder === 'shorts'
           ? 'Shorts'
-          : activeFolder;
+          : cleanTitle(activeFolder);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${activeFolder === 'shorts' && !selectedVideo ? 'in-shorts' : ''}`}>
       <header className="topbar">
         <div className="topbar-start">
           <button className="icon-btn" onClick={toggleMenu} type="button" aria-label="Toggle menu"><MenuIcon /></button>
           <button className="brand" onClick={() => navigate('all')} type="button">
-            <span className="brand-mark" aria-hidden="true" />
-            <span className="brand-name">{APP_COPY.title}</span>
+            <img className="brand-mark" src={PROJECTOR_ART} alt="" />
+            <span className="brand-name">{IS_MOVIE_SITE ? APP_COPY.title : <>Kids <span>Cinema</span></>}</span>
           </button>
         </div>
         <form className="search" onSubmit={(event) => event.preventDefault()} role="search">
@@ -805,12 +750,13 @@ function App() {
             placeholder={APP_COPY.search}
             aria-label="Search"
           />
+          {query ? <button className="search-clear" type="button" aria-label="Clear search" onClick={() => handleSearch('')}><CloseIcon /></button> : null}
           <button className="search-btn" type="submit" aria-label="Search"><SearchIcon /></button>
         </form>
         <div className="topbar-end">
-          <button className="sync-btn" onClick={refresh} disabled={loading} type="button">
+          <button className={`sync-btn ${loading ? 'is-loading' : ''}`} onClick={refresh} disabled={loading} type="button" aria-label={loading ? 'Refreshing videos' : 'Refresh videos'}>
             <SyncIcon />
-            <span>{loading ? 'Syncing' : 'Sync'}</span>
+            <span>{loading ? 'Refreshing' : 'Refresh'}</span>
           </button>
         </div>
       </header>
@@ -826,7 +772,7 @@ function App() {
       />
 
       <main className={`content ${sidebarMini ? 'wide' : ''}`}>
-        {error ? <div className="notice error">{error}</div> : null}
+        {error ? <div className="notice error" role="alert"><span>{error}</span><button type="button" className="chip-btn" onClick={refresh}>Try again</button></div> : null}
         {library.warnings?.length ? <div className="notice">{library.warnings.join(' ')}</div> : null}
 
         {selectedVideo ? (
@@ -836,51 +782,55 @@ function App() {
             queue={queue}
             progress={progress}
             setProgress={setProgress}
-            onPick={setSelectedVideo}
-            onClose={() => setSelectedVideo(null)}
+            onPick={pickVideo}
+            onClose={() => { setSelectedVideo(null); window.history.pushState({}, '', `#${activeFolder === 'shorts' ? `shorts=${shortStartId || ''}` : 'home'}`); }}
             favorite={favorites.includes(selectedVideo.id)}
             onToggleFavorite={toggleFavorite}
+            autoplay={autoplay}
+            setAutoplay={setAutoplay}
           />
+        ) : activeFolder === 'shorts' && videos.length ? (
+          <ShortsFeed videos={shortVideos} startId={shortStartId} favorites={favorites} onSave={toggleFavorite} onOpen={pickVideo} onProgress={saveShortProgress}
+            onActiveChange={id => { if (id) { setShortStartId(id); window.history.replaceState({}, '', `#shorts=${encodeURIComponent(id)}`); } }} />
         ) : (
           <>
-            <div className="chips-row" role="tablist" aria-label="Sort videos">
-              {SORT_CHIPS.map((chip) => (
-                <button
-                  key={chip.key}
-                  className={sortMode === chip.key ? 'chip active' : 'chip'}
-                  onClick={() => setSortMode(chip.key)}
-                  type="button"
-                >
-                  {chip.label}
-                </button>
-              ))}
-              <span className="chips-meta">
-                {filteredVideos.length ? `${filteredVideos.length} videos` : APP_COPY.empty}
-                {refreshedAt ? ` · synced ${new Date(refreshedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}
-              </span>
+            <nav className="folder-chips" aria-label="Quick folders">
+              <button className={`chip ${activeFolder === 'all' && sortMode !== 'recent' ? 'active' : ''}`} aria-pressed={activeFolder === 'all' && sortMode !== 'recent'} onClick={() => { navigate('all'); setSortMode('title'); }} type="button">All</button>
+              {featuredFolders.map(folder => <button key={folder.name} className={`chip ${activeFolder === folder.name ? 'active' : ''}`} aria-pressed={activeFolder === folder.name} onClick={() => navigate(folder.name)} type="button" title={folder.name}>{cleanTitle(folder.name)}</button>)}
+              <button className={`chip ${activeFolder === 'all' && sortMode === 'recent' ? 'active' : ''}`} aria-pressed={activeFolder === 'all' && sortMode === 'recent'} onClick={() => { navigate('all'); setSortMode('recent'); }} type="button">Recently added</button>
+            </nav>
+            <div className="section-toolbar">
+              <div><h2 className="section-title">{query ? `Results for “${query}”` : headingLabel}</h2>
+                <p className="library-meta" role="status">{loading && !videos.length ? 'Loading your videos…' : `${filteredVideos.length.toLocaleString()} video${filteredVideos.length === 1 ? '' : 's'}`}
+                {library.refreshing || (loading && videos.length) ? ' · Updating library…' : refreshedAt ? ' · From your Drive folder' : ''}</p>
+              </div>
+              <label className="sort-control">Sort by <select aria-label="Sort videos" value={sortMode} onChange={event => setSortMode(event.target.value)}>{SORT_CHIPS.map(chip => <option value={chip.key} key={chip.key}>{chip.key === 'title' ? 'Title' : chip.label}</option>)}</select></label>
             </div>
 
-            <h2 className="section-title">{headingLabel}</h2>
-
             {loading && !videos.length ? (
-              <div className="loading-panel">
+              <div className="loading-panel" role="status">
                 <span className="loader" />
-                <p>Loading Drive folder...</p>
+                <h3>Loading your videos</h3><p>Looking through your Drive folders. The first visit can take a moment.</p>
               </div>
+            ) : !filteredVideos.length ? (
+              <div className="empty-panel"><img src={PROJECTOR_ART} alt="" /><h3>{error ? 'Let’s reconnect your videos' : query ? 'No matching videos' : activeFolder === 'favorites' ? 'Your saved shelf is waiting' : activeFolder === 'continue' ? 'Ready for something new?' : 'No videos here yet'}</h3><p>{error ? 'Your library will appear once Drive is available.' : query ? 'Try another title or choose a different folder.' : activeFolder === 'favorites' ? 'Tap the bookmark beside a video to keep it here.' : activeFolder === 'continue' ? 'Videos you start watching will appear here.' : 'Refresh to check your Drive folder for videos.'}</p><button className="chip-btn" onClick={error || (!query && activeFolder === 'all') ? refresh : () => navigate('all')} type="button">{error || (!query && activeFolder === 'all') ? 'Refresh videos' : 'Browse all videos'}</button></div>
             ) : (
               <>
                 <section className="video-grid">
-                  {filteredVideos.slice(0, visibleCount).map((video) => (
+                  {filteredVideos.slice(0, activeFolder === 'all' && !query ? 3 : visibleCount).map((video, index) => (
                     <VideoCard
                       key={video.id}
                       video={video}
-                      onPick={setSelectedVideo}
+                      onPick={pickVideo}
                       progressValue={progressPercent(video, progress)}
                       favorite={favorites.includes(video.id)}
                       onToggleFavorite={toggleFavorite}
+                      eager={index < 6}
                     />
                   ))}
                 </section>
+                {activeFolder === 'all' && !query && shortVideos.length ? <ShortsShelf videos={shortVideos} onPick={pickShort} /> : null}
+                {activeFolder === 'all' && !query ? <section className="video-grid more-videos-grid">{filteredVideos.slice(3, visibleCount).map(video => <VideoCard key={video.id} video={video} onPick={pickVideo} progressValue={progressPercent(video, progress)} favorite={favorites.includes(video.id)} onToggleFavorite={toggleFavorite} />)}</section> : null}
                 {filteredVideos.length > visibleCount ? (
                   <div ref={sentinelRef} className="grid-sentinel" aria-hidden="true" />
                 ) : null}
@@ -889,6 +839,9 @@ function App() {
           </>
         )}
       </main>
+      <nav className="mobile-nav" aria-label="Main navigation">
+        {[{key:'all',label:'Home',icon:<HomeIcon />},{key:'shorts',label:'Shorts',icon:<ShortsIcon />},{key:'continue',label:'Continue',icon:<HistoryIcon />},{key:'favorites',label:'Saved',icon:<BookmarkIcon />}].map(item => <button key={item.key} type="button" aria-current={activeFolder === item.key ? 'page' : undefined} onClick={() => navigate(item.key)} className={activeFolder === item.key ? 'active' : ''}>{item.icon}<span>{item.label}</span></button>)}
+      </nav>
     </div>
   );
 }
