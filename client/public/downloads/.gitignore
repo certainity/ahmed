@@ -1,0 +1,2 @@
+# Family APKs are served only by this local PC; keep them out of Git and Render.
+*.apk

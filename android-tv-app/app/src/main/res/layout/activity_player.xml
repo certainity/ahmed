@@ -1,0 +1,21 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000">
+    <androidx.media3.ui.PlayerView android:id="@+id/player_view" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:keepScreenOn="true" android:focusable="true" app:surface_type="surface_view" app:resize_mode="fit" app:show_timeout="4000"
+        app:use_controller="true" app:keep_content_on_player_reset="true" />
+    <LinearLayout android:id="@+id/player_header" android:layout_width="match_parent" android:layout_height="72dp"
+        android:gravity="center_vertical" android:paddingLeft="24dp" android:paddingRight="24dp" android:background="#CC0F1117">
+        <Button android:id="@+id/back_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Back" />
+        <TextView android:id="@+id/player_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="16dp"
+            android:textColor="#FFFFFF" android:textSize="20sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end" />
+        <Button android:id="@+id/quality_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Quality: Auto" />
+        <Button android:id="@+id/previous_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:text="Previous" />
+        <Button android:id="@+id/next_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:text="Next" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/status_panel" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center"
+        android:gravity="center" android:orientation="vertical" android:padding="20dp" android:background="#DD0F1117" android:visibility="gone">
+        <TextView android:id="@+id/player_status" android:layout_width="wrap_content" android:layout_height="wrap_content" android:maxWidth="520dp"
+            android:textColor="#F1F5FC" android:textSize="18sp" android:gravity="center" />
+        <Button android:id="@+id/retry_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginTop="12dp" android:text="Retry playback" android:visibility="gone" />
+    </LinearLayout>
+</FrameLayout>

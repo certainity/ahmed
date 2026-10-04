@@ -338,6 +338,35 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   }, [video.id, mode]);
 
   useEffect(() => {
+    // Put the primary TV action within reach of OK/Enter, even without a pointer.
+    (exitCinemaRef.current || cinemaButtonRef.current)?.focus({ preventScroll: true });
+  }, [video.id]);
+
+  useEffect(() => {
+    const onCinemaKey = (event) => {
+      if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input, textarea, select'))) return;
+
+      if (event.key?.toLowerCase() === 'c') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) setCinemaMode(current => !current);
+        return;
+      }
+
+      const active = document.activeElement;
+      if (event.key === 'ArrowUp' && (active === document.body || active === document.documentElement || active === videoRef.current)) {
+        event.preventDefault();
+        event.stopPropagation();
+        (cinemaMode ? exitCinemaRef.current : cinemaButtonRef.current)?.focus({ preventScroll: true });
+      }
+    };
+    window.addEventListener('keydown', onCinemaKey, true);
+    return () => window.removeEventListener('keydown', onCinemaKey, true);
+  }, [cinemaMode]);
+
+  useEffect(() => {
     if (!cinemaMode) return;
     // Keep this a CSS layout change: browser fullscreen stalls playback on some TVs.
     document.body.classList.add('cinema-mode-active');
@@ -430,7 +459,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
                 </select>
               </label>
             ) : null}
-            <button ref={cinemaButtonRef} className="cinema-mode-button" aria-pressed={cinemaMode} aria-controls="watch-player" onClick={() => setCinemaMode(true)} type="button">
+            <button ref={cinemaButtonRef} className="cinema-mode-button" aria-pressed={cinemaMode} aria-controls="watch-player" aria-keyshortcuts="c" title="Cinema mode (C; TV remote: Up, then OK)" onClick={() => setCinemaMode(true)} type="button">
               <img src="/assets/cinema/tv-cinema-mode-icon-v01.png" alt="" width="30" height="20" />
               Cinema mode
             </button>
@@ -471,7 +500,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           {cinemaMode ? (
             <div className="cinema-overlay">
               <span className="cinema-mode-label">Cinema mode</span>
-              <button ref={exitCinemaRef} className="exit-cinema-button" onClick={() => setCinemaMode(false)} type="button">Exit Cinema mode</button>
+              <button ref={exitCinemaRef} className="exit-cinema-button" aria-keyshortcuts="c Escape" title="Exit Cinema mode (C or Escape)" onClick={() => setCinemaMode(false)} type="button">Exit Cinema mode</button>
             </div>
           ) : null}
         </div>

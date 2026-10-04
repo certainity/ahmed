@@ -1,0 +1,56 @@
+{
+  "project": "Kids Cinema TV",
+  "batch": "2026-10-05-tv-app-v01",
+  "centralLibrary": "F:\\Agent\\kids-drive-cinema\\2026-10-05-tv-app-v01",
+  "assets": [
+    {
+      "filename": "tv-launcher-banner-v01.png",
+      "purpose": "Android TV launcher banner, fitted to its 16:9 tile",
+      "dimensions": {
+        "width": 1672,
+        "height": 941
+      },
+      "transparency": "opaque complete banner",
+      "createdDate": "2026-10-04",
+      "verifiedDate": "2026-10-05T00:03:13.473233",
+      "source": "ChatGPT > Agent Assets",
+      "sourceUrl": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588-agent-assets/c/6ac2a018-a6f0-83ee-b26e-40508c917d20",
+      "project": "Kids Cinema TV",
+      "screen": "Launcher / library",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-05-tv-app-v01\\originals\\tv-launcher-banner-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-05-tv-app-v01\\ready\\ui\\tv-launcher-banner-v01.png",
+      "stagingPath": "F:\\codex\\kids-drive-cinema-google-folder\\.codex-tv-app-qa\\assets\\tv-launcher-banner-v01.png",
+      "sha256": "b77bd6714beababe57fa038cbc3a7b1709ce3fec4f45917279c4b0af21072dc6",
+      "states": "stationary UI artwork",
+      "reuseSourcePath": null
+    },
+    {
+      "filename": "cinema-projector-v01.png",
+      "purpose": "Reused verified projector mascot for launcher, branding and thumbnail fallback",
+      "dimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "transparency": "verified real alpha 0..255",
+      "createdDate": "2026-10-04",
+      "verifiedDate": "2026-10-05T00:03:13.533456",
+      "source": "ChatGPT > Agent Assets",
+      "sourceUrl": "https://chatgpt.com/g/g-p-6ab4cf2ec5d88191970eddd5f2f13588/c/6ac2350c-98e4-83ee-a2fb-ed202b32527a",
+      "project": "Kids Cinema TV",
+      "screen": "Launcher / library",
+      "originalPath": "F:\\Agent\\kids-drive-cinema\\2026-10-05-tv-app-v01\\originals\\cinema-projector-v01.png",
+      "readyPath": "F:\\Agent\\kids-drive-cinema\\2026-10-05-tv-app-v01\\ready\\icons\\cinema-projector-v01.png",
+      "stagingPath": "F:\\codex\\kids-drive-cinema-google-folder\\.codex-tv-app-qa\\assets\\cinema-projector-v01.png",
+      "sha256": "591e9ac3ce3511f29164d4ebb88e1c0174dfc93347321c98a9d4fe3056e4ee16",
+      "states": "stationary UI artwork",
+      "reuseSourcePath": "F:\\Agent\\kids-drive-cinema\\2026-10-04-library-refresh-v01\\ready\\ui\\cinema-projector-v01.png"
+    }
+  ],
+  "qa": {
+    "originalsPreserved": true,
+    "readyFilesVerified": true,
+    "alphaVerified": true,
+    "edgeInspection": "Banner and projector inspected; full silhouettes inside canvas",
+    "backgroundCheck": "Transparent projector inspected on light and dark backgrounds"
+  }
+}

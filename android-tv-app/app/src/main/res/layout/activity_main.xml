@@ -1,0 +1,28 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="24dp" android:background="#0F1117">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="64dp" android:gravity="center_vertical">
+        <ImageView android:layout_width="52dp" android:layout_height="52dp" android:src="@drawable/projector" android:scaleType="fitCenter" android:contentDescription="" />
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:layout_marginStart="12dp"
+            android:text="Kids Cinema" android:textColor="#F1F5FC" android:textSize="28sp" android:textStyle="bold" />
+        <Button android:id="@+id/connection_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Connection" />
+        <Button android:id="@+id/refresh_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:text="Refresh" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="56dp" android:gravity="center_vertical" android:layout_marginTop="8dp">
+        <Button android:id="@+id/tab_home" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:text="Home"
+            android:focusableInTouchMode="true" android:nextFocusRight="@id/tab_shorts" android:nextFocusUp="@id/connection_button" />
+        <Button android:id="@+id/tab_shorts" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:text="Shorts" />
+        <Button android:id="@+id/tab_continue" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:text="Continue" />
+        <Button android:id="@+id/folder_button" style="@style/TvButton" android:layout_width="wrap_content" android:layout_height="48dp" android:layout_marginStart="8dp" android:maxWidth="200dp" android:maxLines="1" android:ellipsize="end" android:text="All folders" />
+        <EditText android:id="@+id/search_input" android:layout_width="0dp" android:layout_height="48dp" android:layout_weight="1" android:layout_marginStart="12dp"
+            android:singleLine="true" android:inputType="text" android:textSize="16sp" android:hint="Search videos" android:textColor="#F1F5FC" android:textColorHint="#A6B3C9"
+            android:paddingLeft="12dp" android:paddingRight="12dp" android:background="@drawable/tv_focus" />
+    </LinearLayout>
+    <TextView android:id="@+id/status_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:minHeight="34dp" android:gravity="center_vertical"
+        android:textColor="#A6B3C9" android:textSize="15sp" android:text="Connecting to your PC…" />
+    <ProgressBar android:id="@+id/loading" android:layout_width="32dp" android:layout_height="32dp" android:layout_gravity="center_horizontal" />
+    <androidx.recyclerview.widget.RecyclerView android:id="@+id/feed" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+        android:clipToPadding="false" android:paddingBottom="8dp" android:descendantFocusability="afterDescendants" />
+    <TextView android:layout_width="match_parent" android:layout_height="24dp" android:gravity="center_vertical"
+        android:text="Remote: arrows to choose · OK to play · Back to return" android:textColor="#92A0B7" android:textSize="13sp" />
+</LinearLayout>

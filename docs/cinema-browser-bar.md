@@ -2,6 +2,8 @@
 
 The optional Hide browser bar control was removed after the physical TV reported that it paused and stalled playback. The control requested real browser fullscreen, bringing back the same TV problem that CSS Cinema mode avoids. Cinema now enlarges the existing inline player with CSS only and offers Exit Cinema mode. Entering, exiting and Escape do not request browser fullscreen or restart the stream. Chrome's tabs and address bar remain visible; the page cannot hide that browser-owned UI with CSS. Reload the TV's page on port 5174 after rebuilding the app to remove the old control.
 
+Cinema mode can be reached without a mouse: opening a video focuses its Cinema mode button with a visible coral outline, ready for OK/Enter. Press C to enter or exit; Up from the video or page focuses the Cinema button (or Exit while in Cinema). Escape still exits Cinema first. These shortcuts leave search fields, quality selects, editable text and modified browser shortcuts alone. The watch page and video explicitly request a normal cursor; the app cannot restore a pointer hidden by the TV's mouse mode, browser or disconnected mouse. Keyboard input from the physical TV remote still needs checking on that device.
+
 The following records the previous implementation and its PC checks. Those checks did not establish compatibility with the physical TV and do not describe the current controls.
 
 ## Previous implementation
