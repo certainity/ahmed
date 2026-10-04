@@ -76,6 +76,10 @@
 .player-box { background: #17213b; }
 .watch-player-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .watch-player-toolbar .back-button { margin: 0; }
+.watch-player-options { display: flex; align-items: center; gap: 12px; }
+.quality-control { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--soft); }
+.quality-control select { min-height: 44px; padding: 8px 12px; border: 1px solid #c8cfdd; border-radius: 10px; background: #ffffff; color: #17213b; font: 600 14px/20px 'Segoe UI',Arial,sans-serif; cursor: pointer; }
+.playing-resolution { margin: 12px 0 0; color: var(--soft); font-size: 13px; line-height: 20px; }
 .cinema-mode-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 8px 14px; border-radius: 22px; background: #fff0f2; color: #17213b; font-size: 14px; font-weight: 650; white-space: nowrap; }
 .cinema-mode-button:hover { background: #fbdde2; }
 .cinema-mode-button img { display: block; object-fit: contain; }
@@ -142,6 +146,10 @@ body.cinema-mode-active { overflow: hidden; }
   .search { height: 40px; }
   .sync-btn { width: 36px; height: 36px; border-radius: 50%; }
   .cinema-mode-button { font-size: 13px; padding: 8px 11px; gap: 5px; }
+  .watch-player-toolbar { flex-wrap: wrap; gap: 8px; }
+  .watch-player-options { gap: 8px; margin-left: auto; }
+  .quality-control > span { display: none; }
+  .quality-control select { padding: 8px; font-size: 13px; }
   .cinema-overlay { top: max(12px,env(safe-area-inset-top)); left: max(12px,env(safe-area-inset-left)); right: max(12px,env(safe-area-inset-right)); }
   .cinema-mode-label { padding: 12px; font-size: 13px; }
   .exit-cinema-button { font-size: 14px; padding: 12px 14px; }

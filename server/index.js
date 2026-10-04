@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readLibrarySnapshot, writeLibrarySnapshot } from './library-cache.js';
 import { playbackBufferReady } from './hls-buffer.js';
+import { HD_PROFILES, hlsSelection, hlsVariantSuffix, hlsVariantQuery, hdVideoArgs } from './playback-profiles.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,7 @@ const HLS_BUFFER_TIMEOUT_MS = Math.max(3000, Number(process.env.HLS_BUFFER_TIMEO
 const HLS_JOB_START_TIMEOUT_MS = Math.max(15000, Number(process.env.HLS_JOB_START_TIMEOUT_MS || 90000));
 const HLS_PREWARM_MAX_BYTES = Math.max(50 * 1024 * 1024, Number(process.env.HLS_PREWARM_MAX_BYTES || 1200 * 1024 * 1024));
 const ENABLE_HLS_PREWARM = String(process.env.ENABLE_HLS_PREWARM || 'false').toLowerCase() === 'true';
+const ENABLE_HD_PLAYBACK = String(process.env.ENABLE_HD_PLAYBACK || 'false').toLowerCase() === 'true';
 const ENABLE_VIDEO_THUMBNAILS = String(process.env.ENABLE_VIDEO_THUMBNAILS || 'false').toLowerCase() === 'true';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173,https://kids-drive-cinema.onrender.com,https://drive-movies-cinema.onrender.com';
 const INCLUDE_SUBFOLDERS = String(process.env.INCLUDE_SUBFOLDERS || 'true').toLowerCase() !== 'false';
@@ -236,18 +238,16 @@ function publicVideo(video, libraryKey) {
   return { ...safeVideo, hasThumbnail: Boolean(_thumbnailLink || fs.existsSync(getThumbnailPath(libraryKey, video.id))) };
 }
 
-function getHlsVariant(req) {
-  return req.query.vcopy === '1' ? 'vcopy' : 'auto';
-}
-
-function getHlsPaths(libraryKey, videoId, variant = 'auto') {
+function getHlsPaths(libraryKey, videoId, variant = 'auto', from = 0) {
   const safeId = String(videoId).replace(/[^a-zA-Z0-9_-]/g, '');
   const safeLibrary = String(libraryKey).replace(/[^a-zA-Z0-9_-]/g, '') || 'kids';
-  const suffix = variant === 'vcopy' ? '-vcopy' : '';
+  const suffix = hlsVariantSuffix(variant, from);
   const dir = path.join(HLS_CACHE_DIR, `${safeLibrary}-${HLS_CACHE_VERSION}-${safeId}${suffix}`);
   return {
     dir,
     variant,
+    from,
+    jobKey: `${libraryKey}:${videoId}:${variant}${HD_PROFILES[variant] ? `:${from}` : ''}`,
     playlist: path.join(dir, 'master.m3u8'),
     // The vcopy variant uses fMP4 segments so copied HEVC video is playable.
     segmentPattern: path.join(dir, variant === 'vcopy' ? 'segment-%05d.m4s' : 'segment-%05d.ts'),
@@ -351,9 +351,9 @@ function probeVideoCodec(streamUrl, jobKey) {
   });
 }
 
-async function ensureHlsTranscode(libraryKey, video, variant = 'auto') {
-  const paths = getHlsPaths(libraryKey, video.id, variant);
-  const jobKey = `${libraryKey}:${video.id}:${variant}`;
+async function ensureHlsTranscode(libraryKey, video, variant = 'auto', from = 0) {
+  const paths = getHlsPaths(libraryKey, video.id, variant, from);
+  const jobKey = paths.jobKey;
   const existingJob = hlsJobs.get(jobKey);
   if (fs.existsSync(paths.playlist) && (isHlsComplete(paths) || existingJob)) return paths;
   if (existingJob) return existingJob.paths;
@@ -367,6 +367,7 @@ async function ensureHlsTranscode(libraryKey, video, variant = 'auto') {
 }
 
 async function startHlsTranscode(libraryKey, video, paths, jobKey) {
+  hlsLastErrors.delete(jobKey);
   fs.rmSync(paths.dir, { recursive: true, force: true });
   fs.mkdirSync(paths.dir, { recursive: true });
 
@@ -378,10 +379,11 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
   // clients that proved they can decode the source video (it played, just
   // without sound), so it also copies HEVC into fMP4 segments.
   const probeKey = `${libraryKey}:${video.id}`;
-  const videoCodec = await probeVideoCodec(streamUrl, probeKey);
-  const wantsCopy = paths.variant === 'vcopy'
+  const isHd = Boolean(HD_PROFILES[paths.variant]);
+  const videoCodec = isHd ? null : await probeVideoCodec(streamUrl, probeKey);
+  const wantsCopy = !isHd && (paths.variant === 'vcopy'
     ? videoCodec === 'h264' || videoCodec === 'hevc'
-    : videoCodec === 'h264';
+    : videoCodec === 'h264');
   const useFmp4 = paths.variant === 'vcopy';
 
   const inputArgs = [
@@ -391,13 +393,15 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
     '-reconnect_streamed', '1',
     '-reconnect_delay_max', '5',
     '-fflags', '+genpts',
+    // Seek the approved Drive source before decoding when switching quality.
+    ...(paths.from ? ['-ss', String(paths.from)] : []),
     '-i', streamUrl,
     '-map', '0:v:0',
     '-map', '0:a:0?'
   ];
   const videoArgs = wantsCopy
     ? ['-c:v', 'copy', ...(videoCodec === 'hevc' ? ['-tag:v', 'hvc1'] : [])]
-    : [
+    : isHd ? hdVideoArgs(paths.variant) : [
         '-c:v', 'libx264',
         '-preset', 'ultrafast',
         '-tune', 'zerolatency',
@@ -415,7 +419,7 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
         '-hls_flags', 'temp_file'
       ]
     : [
-        '-hls_flags', wantsCopy ? 'temp_file' : 'split_by_time+temp_file'
+        '-hls_flags', isHd ? 'independent_segments+temp_file' : wantsCopy ? 'temp_file' : 'split_by_time+temp_file'
       ];
   const args = [
     ...inputArgs,
@@ -452,11 +456,18 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
     if (stderr.length > 8000) stderr = stderr.slice(-8000);
   });
 
-  const job = { child, paths, stderr };
+  const job = { child, paths, stderr, lastRequestAt: Date.now() };
   hlsJobs.set(jobKey, job);
+  // A quality switch leaves the previous conversion unused. Stop it after
+  // requests cease rather than converting another full movie in the background.
+  const idleTimer = isHd ? setInterval(() => {
+    if (Date.now() - job.lastRequestAt > 90000) child.kill('SIGTERM');
+  }, 30000) : null;
+  idleTimer?.unref();
 
   child.on('exit', (code) => {
     clearTimeout(startTimeout);
+    clearInterval(idleTimer);
     hlsJobs.delete(jobKey);
     if (code !== 0 && !fs.existsSync(paths.playlist)) {
       const message = `HLS transcode failed for ${video.id} with code ${code}: ${stderr || 'No ffmpeg output.'}`;
@@ -468,6 +479,7 @@ async function startHlsTranscode(libraryKey, video, paths, jobKey) {
   });
 
   child.on('error', (error) => {
+    clearInterval(idleTimer);
     clearTimeout(startTimeout);
     hlsJobs.delete(jobKey);
     hlsLastErrors.set(jobKey, String(error?.message || error).slice(-2000));
@@ -841,6 +853,14 @@ app.get('/health', (_req, res) => {
   });
 });
 
+app.get('/api/playback-config', (_req, res) => {
+  res.set('Cache-Control', 'no-store').json({
+    hdEnabled: ENABLE_HD_PLAYBACK,
+    qualities: ENABLE_HD_PLAYBACK ? ['auto', '720p', '1080p'] : ['auto'],
+    defaultQuality: ENABLE_HD_PLAYBACK ? '1080p' : 'auto'
+  });
+});
+
 app.get('/api/videos', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
@@ -1025,11 +1045,13 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       throw err;
     }
 
-    const variant = getHlsVariant(req);
-    const paths = await ensureHlsTranscode(libraryKey, video, variant);
+    const { variant, from } = hlsSelection(req.query, video, ENABLE_HD_PLAYBACK);
+    const paths = await ensureHlsTranscode(libraryKey, video, variant, from);
+    const job = hlsJobs.get(paths.jobKey);
+    if (job) job.lastRequestAt = Date.now();
     const ready = await waitForFile(paths.playlist, HLS_START_TIMEOUT_MS);
     if (!ready) {
-      const jobKey = `${libraryKey}:${video.id}:${variant}`;
+      const jobKey = paths.jobKey;
       const lastError = hlsLastErrors.get(jobKey) || null;
       const quotaExceeded = /downloadQuotaExceeded|download quota|HTTP error 403 Forbidden/i.test(lastError || '');
       res.status(quotaExceeded ? 429 : 202).json({
@@ -1044,7 +1066,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
     }
 
     const requestedStart = Number(req.query.start || 0);
-    const startSeconds = Number.isFinite(requestedStart) ? Math.max(0, requestedStart) : 0;
+    const startSeconds = Number.isFinite(requestedStart) ? Math.max(0, requestedStart - from) : 0;
     const bufferReady = await waitForHlsBuffer(
       paths,
       startSeconds,
@@ -1060,7 +1082,7 @@ app.get('/api/hls/:id/master.m3u8', async (req, res, next) => {
       return;
     }
 
-    const segmentQuery = `?library=${libraryKey}${variant === 'vcopy' ? '&vcopy=1' : ''}`;
+    const segmentQuery = `?library=${libraryKey}${hlsVariantQuery(variant, from)}`;
     const playlist = fs.readFileSync(paths.playlist, 'utf8')
       .replace(/(segment-\d{5}\.(?:ts|m4s)|init\.mp4)(?!\?)/g, `$1${segmentQuery}`);
 
@@ -1145,7 +1167,7 @@ app.post('/api/hls/:id/prewarm', async (req, res, next) => {
 app.get('/api/hls/:id/:segment', async (req, res, next) => {
   try {
     const libraryKey = getLibraryKey(req);
-    await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
+    const video = await getAllowedVideo(req.params.id, libraryKey, { allowStale: true });
     const segment = String(req.params.segment || '');
     if (!/^(segment-\d{5}\.(ts|m4s)|init\.mp4)$/.test(segment)) {
       const err = new Error('Invalid HLS segment.');
@@ -1153,7 +1175,10 @@ app.get('/api/hls/:id/:segment', async (req, res, next) => {
       throw err;
     }
 
-    const paths = getHlsPaths(libraryKey, req.params.id, getHlsVariant(req));
+    const { variant, from } = hlsSelection(req.query, video, ENABLE_HD_PLAYBACK);
+    const paths = getHlsPaths(libraryKey, req.params.id, variant, from);
+    const job = hlsJobs.get(paths.jobKey);
+    if (job) job.lastRequestAt = Date.now();
     const segmentPath = path.join(paths.dir, segment);
     const ready = await waitForFile(segmentPath, Number(process.env.HLS_SEGMENT_TIMEOUT_MS || 15000));
     if (!ready) {

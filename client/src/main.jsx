@@ -11,7 +11,8 @@ const PROJECTOR_ART = '/assets/cinema/cinema-projector-web-v02.png';
 
 const STORAGE_KEYS = {
   favorites: 'kids-drive-cinema:favorites:v2',
-  progress: 'kids-drive-cinema:progress:v2'
+  progress: 'kids-drive-cinema:progress:v2',
+  quality: 'kids-drive-cinema:quality:v1'
 };
 
 const IS_MOVIE_SITE = typeof window !== 'undefined' && window.location.hostname.includes('drive-movies-cinema');
@@ -285,6 +286,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   const [status, setStatus] = useState('Loading your video…');
   const [retryCount, setRetryCount] = useState(0);
   const [playbackError, setPlaybackError] = useState(false);
+  const [playbackConfig, setPlaybackConfig] = useState(null);
+  const [quality, setQuality] = useState(null);
+  const [resolution, setResolution] = useState('');
   const resumeTimeRef = useRef(0);
   const lastProgressSaveRef = useRef(0);
 
@@ -303,13 +307,29 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   }, [queue, currentIndex]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    fetch(apiUrl('/api/playback-config'), { signal: controller.signal, cache: 'no-store' })
+      .then(response => { if (!response.ok) throw new Error('Unavailable'); return response.json(); })
+      .catch(() => ({ qualities: ['auto'], defaultQuality: 'auto' }))
+      .then(config => {
+        if (controller.signal.aborted) return;
+        const available = Array.isArray(config.qualities) ? config.qualities.filter(item => ['auto', '720p', '1080p'].includes(item)) : ['auto'];
+        const saved = readJson(STORAGE_KEYS.quality, '');
+        setPlaybackConfig({ ...config, qualities: available });
+        setQuality(available.includes(saved) ? saved : available.includes(config.defaultQuality) ? config.defaultQuality : 'auto');
+      });
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
     const player = videoRef.current;
-    if (!player || mode !== 'browser') return;
+    if (!player || mode !== 'browser' || quality === null) return;
     const resumeAt = resumeTimeRef.current || (continueWatching(video, progress) ? progress[video.id].currentTime : 0);
     resumeTimeRef.current = 0;
+    setResolution('');
     setPlaybackError(false);
-    return mountPlayback(player, video, { resumeAt, onStatus: setStatus, onFailure: () => setPlaybackError(true) });
-  }, [video.id, mode, retryCount]);
+    return mountPlayback(player, video, { resumeAt, quality, onStatus: setStatus, onFailure: () => setPlaybackError(true) });
+  }, [video.id, mode, retryCount, quality]);
 
   useEffect(() => {
     const flush = () => remember(true);
@@ -377,6 +397,20 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
     setRetryCount(count => count + 1);
   }
 
+  function chooseQuality(value) {
+    if (value === quality) return;
+    resumeTimeRef.current = videoRef.current?.currentTime || progress[video.id]?.currentTime || 0;
+    remember(true);
+    writeJson(STORAGE_KEYS.quality, value);
+    setResolution('');
+    setQuality(value);
+  }
+
+  function updateResolution() {
+    const player = videoRef.current;
+    if (player?.videoWidth && player?.videoHeight) setResolution(`${player.videoWidth} × ${player.videoHeight}`);
+  }
+
   function pickEpisode(item) { remember(true); if (item) onPick(item); }
 
   const collection = video.collection || video.folderPath?.[0] || 'Main folder';
@@ -386,10 +420,20 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
       <div className="watch-primary">
         <div className="watch-player-toolbar">
           <button className="back-button" onClick={() => { remember(true); onClose(); }} type="button"><BackIcon /> Back to videos</button>
-          <button ref={cinemaButtonRef} className="cinema-mode-button" aria-pressed={cinemaMode} aria-controls="watch-player" onClick={() => setCinemaMode(true)} type="button">
-            <img src="/assets/cinema/tv-cinema-mode-icon-v01.png" alt="" width="30" height="20" />
-            Cinema mode
-          </button>
+          <div className="watch-player-options">
+            {mode === 'browser' && playbackConfig?.hdEnabled ? (
+              <label className="quality-control">
+                <span>Quality</span>
+                <select aria-label="Playback quality" value={quality || 'auto'} onChange={event => chooseQuality(event.target.value)}>
+                  {playbackConfig.qualities.map(value => <option key={value} value={value}>{value === 'auto' ? 'Auto' : `${value} HD`}</option>)}
+                </select>
+              </label>
+            ) : null}
+            <button ref={cinemaButtonRef} className="cinema-mode-button" aria-pressed={cinemaMode} aria-controls="watch-player" onClick={() => setCinemaMode(true)} type="button">
+              <img src="/assets/cinema/tv-cinema-mode-icon-v01.png" alt="" width="30" height="20" />
+              Cinema mode
+            </button>
+          </div>
         </div>
         <div id="watch-player" className={`player-box${cinemaMode ? ' cinema-player' : ''}`}>
           {mode === 'drive' && video.drivePreviewUrl ? (
@@ -409,7 +453,9 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
               playsInline
               preload="metadata"
               onDoubleClick={(event) => { event.preventDefault(); setCinemaMode(true); }}
-              onPlaying={() => { setStatus(''); setPlaybackError(false); }}
+              onPlaying={() => { setStatus(''); setPlaybackError(false); updateResolution(); }}
+              onLoadedMetadata={updateResolution}
+              onResize={updateResolution}
               onWaiting={() => setStatus('Buffering your video…')}
               onTimeUpdate={() => remember()}
               onPause={() => remember(true)}
@@ -429,6 +475,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           ) : null}
         </div>
 
+        {mode === 'browser' && resolution ? <p className="playing-resolution">Playing: {resolution}</p> : null}
         <h1 className="watch-title">{cleanTitle(video.title)}</h1>
 
         <div className="watch-row">
