@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -196,6 +196,21 @@ const BookmarkIcon = ({ filled = false }) => (
     : <Svg stroke size={20}><path d="M6.8 4.8h10.4v15l-5.2-3.6-5.2 3.6v-15z" /></Svg>
 );
 const SyncIcon = () => <Svg size={20}><path d="M17.65 6.35A8 8 0 1 0 20 12h-2.1a6 6 0 1 1-1.6-4.06L13.5 10.5H20V4l-2.35 2.35z" /></Svg>;
+const InstallIcon = () => (
+  <Svg stroke size={20}>
+    <path d="M12 4v10" />
+    <path d="M7.5 10 12 14.5 16.5 10" />
+    <path d="M5 19h14" />
+  </Svg>
+);
+const GamesIcon = () => (
+  <Svg stroke size={20}>
+    <rect x="2.5" y="7" width="19" height="11" rx="5.5" />
+    <path d="M7.5 10.5v4M5.5 12.5h4" />
+    <circle cx="16" cy="11.5" r="0.6" />
+    <circle cx="18" cy="13.5" r="0.6" />
+  </Svg>
+);
 const CloseIcon = () => <Svg size={20}><path d="M18.3 5.7L12 12l6.3 6.3-1.4 1.4L10.6 13.4 12 12 5.7 5.7l1.4-1.4L12 10.6l4.9-4.9 1.4 1.4z" transform="translate(0,0)" /></Svg>;
 const PrevIcon = () => <Svg size={20}><path d="M6 6h2v12H6V6zm12 0v12l-9-6 9-6z" /></Svg>;
 const NextIcon = () => <Svg size={20}><path d="M16 6h2v12h-2V6zM6 6l9 6-9 6V6z" /></Svg>;
@@ -612,7 +627,8 @@ function Sidebar({ folders, activeFolder, onNavigate, counts, mini, drawerOpen, 
     { key: 'all', label: 'Home', icon: <HomeIcon /> },
     { key: 'shorts', label: 'Shorts', icon: <ShortsIcon /> },
     { key: 'continue', label: 'Continue', icon: <HistoryIcon /> },
-    { key: 'favorites', label: 'Saved', icon: <BookmarkIcon /> }
+    { key: 'favorites', label: 'Saved', icon: <BookmarkIcon /> },
+    ...(IS_MOVIE_SITE ? [] : [{ key: 'games', label: 'Games', icon: <GamesIcon /> }])
   ];
 
   return (
@@ -666,8 +682,53 @@ const SORT_CHIPS = [
 
 const GRID_BATCH = 48;
 
+/* ---------- installable app ---------- */
+
+let deferredInstall = null;
+const installListeners = new Set();
+
+function setupPwa() {
+  if (IS_MOVIE_SITE || document.querySelector('link[rel="manifest"]')) return;
+  const manifest = document.createElement('link');
+  manifest.rel = 'manifest';
+  manifest.href = '/manifest.webmanifest';
+  document.head.append(manifest);
+  const notify = () => installListeners.forEach((fn) => fn());
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstall = event;
+    notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstall = null;
+    notify();
+  });
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+}
+
+function useInstallPrompt() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const onChange = () => rerender((n) => n + 1);
+    installListeners.add(onChange);
+    return () => installListeners.delete(onChange);
+  }, []);
+  if (!deferredInstall) return null;
+  return () => {
+    const event = deferredInstall;
+    deferredInstall = null;
+    installListeners.forEach((fn) => fn());
+    event.prompt();
+  };
+}
+
 function App() {
   const { videos, library, loading, error, refreshedAt, refresh } = useVideos();
+  const install = useInstallPrompt();
   const [query, setQuery] = useState('');
   const [activeFolder, setActiveFolder] = useState('all');
   const [sortMode, setSortMode] = useState('title');
@@ -763,6 +824,11 @@ function App() {
   }
 
   function navigate(folderKey) {
+    if (folderKey === 'games') {
+      setDrawerOpen(false);
+      window.location.hash = 'games';
+      return;
+    }
     setActiveFolder(folderKey);
     setSelectedVideo(null);
     setDrawerOpen(false);
@@ -808,6 +874,18 @@ function App() {
           <button className="search-btn" type="submit" aria-label="Search"><SearchIcon /></button>
         </form>
         <div className="topbar-end">
+          {install ? (
+            <button className="sync-btn" onClick={install} type="button">
+              <InstallIcon />
+              <span>Install app</span>
+            </button>
+          ) : null}
+          {IS_MOVIE_SITE ? null : (
+            <a className="sync-btn games-link" href="#games">
+              <GamesIcon />
+              <span>Games</span>
+            </a>
+          )}
           <button className="sync-btn" onClick={refresh} disabled={loading} type="button">
             <SyncIcon />
             <span>{loading ? 'Syncing' : 'Sync'}</span>
@@ -893,6 +971,52 @@ function App() {
   );
 }
 
+const GamesApp = lazy(() => import('./games/GamesApp.jsx'));
+
+function useGamesRoute() {
+  const read = () => {
+    if (IS_MOVIE_SITE) return null;
+    const match = window.location.hash.match(/^#games(?:\/([\w-]+))?$/);
+    return match ? { gameId: match[1] || null } : null;
+  };
+  const [route, setRoute] = useState(read);
+  useEffect(() => {
+    const onHash = () => setRoute(read());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
+  return route;
+}
+
+function Root() {
+  const games = useGamesRoute();
+  const open = Boolean(games);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    document.querySelectorAll('video').forEach((video) => video.pause());
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+      document.title = 'Kids Drive Cinema';
+    };
+  }, [open]);
+
+  return (
+    <>
+      <App />
+      {open ? (
+        <Suspense fallback={<div className="games-loading"><span className="loader" /></div>}>
+          <GamesApp gameId={games.gameId} />
+        </Suspense>
+      ) : null}
+    </>
+  );
+}
+
+setupPwa();
+
 const container = document.getElementById('root');
 const root = container._reactRoot || (container._reactRoot = createRoot(container));
-root.render(<App />);
+root.render(<Root />);

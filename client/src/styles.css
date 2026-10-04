@@ -196,6 +196,20 @@ a {
   background: var(--chip-hover);
 }
 
+.games-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.games-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  background: #cfeaff;
+}
+
 /* ---------- sidebar ---------- */
 
 .sidebar {
