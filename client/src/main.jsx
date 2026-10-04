@@ -282,6 +282,13 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   const cinemaButtonRef = useRef(null);
   const exitCinemaRef = useRef(null);
   const [cinemaMode, setCinemaMode] = useState(false);
+  const [browserBarHidden, setBrowserBarHidden] = useState(false);
+  const [browserBarPending, setBrowserBarPending] = useState(false);
+  const [browserBarMessage, setBrowserBarMessage] = useState('');
+  const ownsPageFullscreenRef = useRef(false);
+  const watchMountedRef = useRef(true);
+  const cinemaModeRef = useRef(cinemaMode);
+  cinemaModeRef.current = cinemaMode;
   const [mode, setMode] = useState('browser');
   const [status, setStatus] = useState('Loading your video…');
   const [retryCount, setRetryCount] = useState(0);
@@ -338,7 +345,26 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   }, [video.id, mode]);
 
   useEffect(() => {
+    watchMountedRef.current = true;
+    const syncBrowserBar = () => {
+      const element = document.fullscreenElement || document.webkitFullscreenElement;
+      setBrowserBarHidden(element === document.documentElement);
+      if (element !== document.documentElement) ownsPageFullscreenRef.current = false;
+    };
+    document.addEventListener('fullscreenchange', syncBrowserBar);
+    document.addEventListener('webkitfullscreenchange', syncBrowserBar);
+    syncBrowserBar();
+    return () => {
+      watchMountedRef.current = false;
+      document.removeEventListener('fullscreenchange', syncBrowserBar);
+      document.removeEventListener('webkitfullscreenchange', syncBrowserBar);
+      restoreBrowserBar();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!cinemaMode) return;
+    setBrowserBarMessage('');
     document.body.classList.add('cinema-mode-active');
     exitCinemaRef.current?.focus({ preventScroll: true });
     // Handle Escape before the watch page's normal back-to-library shortcut.
@@ -350,6 +376,7 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
     };
     window.addEventListener('keydown', exitOnEscape, true);
     return () => {
+      restoreBrowserBar();
       document.body.classList.remove('cinema-mode-active');
       window.removeEventListener('keydown', exitOnEscape, true);
       cinemaButtonRef.current?.focus({ preventScroll: true });
@@ -357,6 +384,48 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
   }, [cinemaMode]);
 
   if (!video) return null;
+
+  async function restoreBrowserBar() {
+    const element = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!ownsPageFullscreenRef.current || element !== document.documentElement) return;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if (exit) {
+      try { await exit.call(document); } catch { /* The browser's Back/Escape still exits fullscreen. */ }
+    }
+  }
+
+  async function toggleBrowserBar() {
+    if (browserBarPending) return;
+    setBrowserBarMessage('');
+    const root = document.documentElement;
+    const element = document.fullscreenElement || document.webkitFullscreenElement;
+    const request = root.requestFullscreen || root.webkitRequestFullscreen;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+    if ((element === root && !exit) || (element !== root && !request)) {
+      setBrowserBarMessage('This browser cannot hide its bar from the page.');
+      return;
+    }
+    setBrowserBarPending(true);
+    try {
+      if (element === root) {
+        await exit.call(document);
+      } else {
+        ownsPageFullscreenRef.current = true;
+        // Fullscreen the page, keeping the existing inline video and decoder.
+        await (root.requestFullscreen ? request.call(root, { navigationUI: 'hide' }) : request.call(root));
+        // A late browser response must not leave another screen in fullscreen.
+        if (!watchMountedRef.current || !cinemaModeRef.current) await restoreBrowserBar();
+      }
+    } catch {
+      const currentElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (currentElement !== root) ownsPageFullscreenRef.current = false;
+      if (watchMountedRef.current) setBrowserBarMessage(element === root
+        ? 'Chrome did not allow showing its bar. Use Back or Escape.'
+        : 'Chrome did not allow hiding its bar. Cinema mode is still on.');
+    } finally {
+      if (watchMountedRef.current) setBrowserBarPending(false);
+    }
+  }
 
   function remember(force = false) {
     const player = videoRef.current;
@@ -470,7 +539,13 @@ function WatchView({ video, queue, progress, setProgress, onPick, onClose, favor
           {cinemaMode ? (
             <div className="cinema-overlay">
               <span className="cinema-mode-label">Cinema mode</span>
-              <button ref={exitCinemaRef} className="exit-cinema-button" onClick={() => setCinemaMode(false)} type="button">Exit Cinema mode</button>
+              <div className="cinema-browser-controls">
+                <div className="cinema-control-buttons">
+                  <button className="browser-bar-button" onClick={toggleBrowserBar} disabled={browserBarPending} aria-pressed={browserBarHidden} type="button">{browserBarHidden ? 'Show browser bar' : 'Hide browser bar'}</button>
+                  <button ref={exitCinemaRef} className="exit-cinema-button" onClick={() => setCinemaMode(false)} type="button">Exit Cinema mode</button>
+                </div>
+                {browserBarMessage ? <p className="browser-bar-message" role="status">{browserBarMessage}</p> : null}
+              </div>
             </div>
           ) : null}
         </div>
