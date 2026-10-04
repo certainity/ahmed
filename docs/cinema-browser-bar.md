@@ -1,4 +1,10 @@
-# Optional browser bar control
+# Cinema mode and browser bars
+
+The optional Hide browser bar control was removed after the physical TV reported that it paused and stalled playback. The control requested real browser fullscreen, bringing back the same TV problem that CSS Cinema mode avoids. Cinema now enlarges the existing inline player with CSS only and offers Exit Cinema mode. Entering, exiting and Escape do not request browser fullscreen or restart the stream. Chrome's tabs and address bar remain visible; the page cannot hide that browser-owned UI with CSS. Reload the TV's page on port 5174 after rebuilding the app to remove the old control.
+
+The following records the previous implementation and its PC checks. Those checks did not establish compatibility with the physical TV and do not describe the current controls.
+
+## Previous implementation
 
 Cinema mode now offers a separate Hide browser bar button for the TV's Chrome tabs/address strip. Default Cinema entry remains the CSS view. Hide browser bar requests fullscreen on the HTML page with `navigationUI: 'hide'`, preserving the inline player and its current stream. The button changes to Show browser bar after a successful fullscreen change. Exit Cinema mode restores page fullscreen owned by this view; Escape and component cleanup also restore it. Playback initialization does not depend on either Cinema or browser-bar state.
 
