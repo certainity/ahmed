@@ -266,8 +266,9 @@ export function makeCanvas(host, { paper } = {}) {
   const canvas = document.createElement('canvas');
   canvas.className = 'pr-canvas';
   host.append(canvas);
-  const ctx = canvas.getContext('2d');
-  const view = { w: 0, h: 0, dpr: 1 };
+  // Every game paints its whole frame, so an opaque canvas composites faster.
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const view = { w: 0, h: 0, dpr: 1, quality: 1 };
   function fit() {
     const rect = host.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -280,12 +281,13 @@ export function makeCanvas(host, { paper } = {}) {
     }
     const oldW = view.w;
     const oldH = view.h;
-    view.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    view.dpr = Math.min(window.devicePixelRatio || 1, 2) * view.quality;
     view.w = rect.width;
     view.h = rect.height;
     canvas.width = Math.round(rect.width * view.dpr);
     canvas.height = Math.round(rect.height * view.dpr);
     ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
     if (paper) {
       ctx.fillStyle = paper;
       ctx.fillRect(0, 0, view.w, view.h);
@@ -295,10 +297,39 @@ export function makeCanvas(host, { paper } = {}) {
   const ro = new ResizeObserver(fit);
   ro.observe(host);
   fit();
+
+  // Adaptive resolution: watch how long drawing takes (not the refresh rate) and trade pixels for frames.
+  let frames = 0;
+  let work = 0;
+  let calm = 0;
+  function sample(ms) {
+    frames++;
+    work += ms;
+    if (frames < 45) return;
+    const avg = work / frames;
+    frames = 0;
+    work = 0;
+    if (avg > 11 && view.quality > 0.5) {
+      view.quality = Math.max(0.5, view.quality - 0.15);
+      calm = 0;
+      fit();
+    } else if (avg < 5 && view.quality < 1) {
+      calm++;
+      if (calm >= 4) {
+        view.quality = Math.min(1, view.quality + 0.15);
+        calm = 0;
+        fit();
+      }
+    } else {
+      calm = 0;
+    }
+  }
+
   return {
     canvas,
     ctx,
     view,
+    sample,
     destroy() {
       ro.disconnect();
       canvas.remove();
@@ -306,17 +337,145 @@ export function makeCanvas(host, { paper } = {}) {
   };
 }
 
-export function loop(fn) {
+export function loop(fn, cv) {
   let id = 0;
   let last = performance.now();
   function frame(t) {
     const dt = Math.min(0.05, (t - last) / 1000);
     last = t;
+    const start = performance.now();
     fn(dt, t);
+    if (cv) cv.sample(performance.now() - start);
     id = requestAnimationFrame(frame);
   }
   id = requestAnimationFrame(frame);
   return () => cancelAnimationFrame(id);
+}
+
+/* A drawing that only changes when its key or size changes, kept at the canvas's pixel density. */
+export function makeLayer(cv) {
+  let cache = null;
+  return (key, w, h, draw, density = cv.view.dpr) => {
+    const dpr = density;
+    const pw = Math.max(1, Math.round(w * dpr));
+    const ph = Math.max(1, Math.round(h * dpr));
+    if (!cache || cache.key !== key || cache.pw !== pw || cache.ph !== ph) {
+      const c = document.createElement('canvas');
+      c.width = pw;
+      c.height = ph;
+      const x = c.getContext('2d');
+      x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      x.imageSmoothingQuality = 'high';
+      draw(x, w, h);
+      cache = { key, pw, ph, canvas: c };
+    }
+    return cache.canvas;
+  };
+}
+
+/* Renders an image and its mirror side by side once, so scrolling it is two plain blits per frame. */
+export function mirrorStrip(layer, img, axis, size, cross) {
+  const w = axis === 'x' ? size * 2 : cross;
+  const h = axis === 'x' ? cross : size * 2;
+  // No point storing more pixels than the painting has; the blit scales it up cheaply.
+  const density = Math.min(window.devicePixelRatio || 1, 2, img.naturalWidth / (axis === 'x' ? size : cross));
+  return layer(`strip:${img.src}:${axis}`, w, h, (x) => {
+    if (axis === 'x') {
+      x.drawImage(img, 0, 0, size, cross);
+      x.save();
+      x.translate(size * 2, 0);
+      x.scale(-1, 1);
+      x.drawImage(img, 0, 0, size, cross);
+      x.restore();
+    } else {
+      x.drawImage(img, 0, 0, cross, size);
+      x.save();
+      x.translate(0, size * 2);
+      x.scale(1, -1);
+      x.drawImage(img, 0, 0, cross, size);
+      x.restore();
+    }
+  }, density);
+}
+
+export function drawStrip(ctx, strip, { axis, size, cross, offset, length }) {
+  const period = size * 2;
+  const start = -(((offset % period) + period) % period);
+  for (let p = start; p < length; p += period) {
+    if (axis === 'x') ctx.drawImage(strip, p, 0, period, cross);
+    else ctx.drawImage(strip, 0, p, cross, period);
+  }
+}
+
+const emojiCache = new Map();
+
+/* Emoji text is slow to draw every frame on many phones, so each glyph is rasterised once per size. */
+export function emojiSprite(glyph, size) {
+  const px = Math.max(8, Math.round(size / 4) * 4);
+  const key = `${glyph}:${px}`;
+  let sprite = emojiCache.get(key);
+  if (!sprite) {
+    const scale = 2;
+    const box = Math.ceil(px * 1.3);
+    const c = document.createElement('canvas');
+    c.width = c.height = box * scale;
+    const x = c.getContext('2d');
+    x.scale(scale, scale);
+    x.font = `${px}px ${EMOJI_FONT}`;
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.fillText(glyph, box / 2, box / 2 + px * 0.04);
+    sprite = { canvas: c, box };
+    emojiCache.set(key, sprite);
+  }
+  return sprite;
+}
+
+export function drawEmoji(ctx, glyph, x, y, size, rot = 0) {
+  const { canvas, box } = emojiSprite(glyph, size);
+  const k = size / (box / 1.3);
+  ctx.save();
+  ctx.translate(x, y);
+  if (rot) ctx.rotate(rot);
+  ctx.drawImage(canvas, (-box * k) / 2, (-box * k) / 2, box * k, box * k);
+  ctx.restore();
+}
+
+/* Small camera shake for hits, skipped when the viewer prefers less motion. */
+export function makeShake() {
+  let power = 0;
+  return {
+    kick(amount) {
+      if (!reduceMotion()) power = Math.max(power, amount);
+    },
+    apply(ctx, dt) {
+      if (power <= 0.2) {
+        power = 0;
+        return;
+      }
+      ctx.translate((Math.random() - 0.5) * power, (Math.random() - 0.5) * power);
+      power *= Math.pow(0.002, dt);
+    }
+  };
+}
+
+/* Soft round glow sprite for bullets, sparkles and pickups, drawn with additive blending. */
+const glowCache = new Map();
+export function glowSprite(color) {
+  let c = glowCache.get(color);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, color);
+    g.addColorStop(0.35, color);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, 64, 64);
+    glowCache.set(color, c);
+  }
+  return c;
 }
 
 export function pointIn(e, el) {
@@ -338,25 +497,6 @@ export function loadImage(src) {
 }
 
 export const imageReady = (img) => Boolean(img && img.complete && img.naturalWidth);
-
-// Tiles an image along one axis, flipping every other copy so the seams mirror instead of jumping.
-export function drawMirrorTiles(ctx, img, { axis, size, cross, offset, length, origin = 0 }) {
-  const period = size * 2;
-  const start = -(((offset % period) + period) % period);
-  for (let p = start, k = 0; p < length; p += size, k++) {
-    ctx.save();
-    if (axis === 'x') {
-      ctx.translate(p + (k % 2 ? size : 0), origin);
-      ctx.scale(k % 2 ? -1 : 1, 1);
-      ctx.drawImage(img, 0, 0, size, cross);
-    } else {
-      ctx.translate(origin, p + (k % 2 ? size : 0));
-      ctx.scale(1, k % 2 ? -1 : 1);
-      ctx.drawImage(img, 0, 0, cross, size);
-    }
-    ctx.restore();
-  }
-}
 
 export function drawSky(ctx, view, top, bottom) {
   const g = ctx.createLinearGradient(0, 0, 0, view.h);
@@ -517,4 +657,14 @@ export function panel(host, { title, text, button, onClick }) {
   host.append(wrap);
   b.focus({ preventScroll: true });
   return () => wrap.remove();
+}
+
+/* Lightens (amount > 0) or darkens (amount < 0) a #rrggbb colour. */
+export function shade(hex, amount) {
+  const n = parseInt(hex.slice(1), 16);
+  const mix = (c) => Math.round(amount >= 0 ? c + (255 - c) * amount : c * (1 + amount));
+  const r = mix((n >> 16) & 255);
+  const g = mix((n >> 8) & 255);
+  const b = mix(n & 255);
+  return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 }

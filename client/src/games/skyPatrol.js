@@ -3,13 +3,17 @@ import {
   PAPER,
   Sound,
   clamp,
-  drawMirrorTiles,
+  drawStrip,
+  glowSprite,
   hearts,
   hintText,
   imageReady,
   loadImage,
   loop,
   makeCanvas,
+  makeLayer,
+  makeShake,
+  mirrorStrip,
   outlinedText,
   pick,
   pointIn,
@@ -31,6 +35,8 @@ export function shooterGame(arena, api) {
   const { ctx, view, canvas } = cv;
   const keys = trackKeys(s);
   const ocean = loadImage(oceanArt);
+  const oceanLayer = makeLayer(cv);
+  const shake = makeShake();
 
   let stage = 1;
   let hp = MAX_HP;
@@ -48,12 +54,17 @@ export function shooterGame(arena, api) {
   let orbs = [];
   let pickups = [];
   let puffs = [];
+  let rings = [];
+  let sparks = [];
+  let flashes = [];
+  let trail = [];
+  let trailIn = 0;
+  let hurtFlash = 0;
   let floaters = [];
   let pending = [];
   let fireIn = 0;
   let drag = null;
   const player = { x: 0, y: 0, inv: 0, tilt: 0 };
-  const islands = Array.from({ length: 5 }, (_, i) => ({ x: rand(0, 1), y: i / 5, r: rand(0.08, 0.16), seed: rand(0, 6) }));
   const clouds = Array.from({ length: 6 }, (_, i) => ({ x: rand(-0.1, 1), y: i / 6, s: rand(0.8, 1.6) }));
 
   const unit = () => clamp(Math.min(view.w, view.h) / 620, 0.6, 1.3);
@@ -175,6 +186,13 @@ export function shooterGame(arena, api) {
     for (let i = 0; i < 6; i++) {
       puffs.push({ x: x + rand(-14, 14) * u * size, y: y + rand(-14, 14) * u * size, r: rand(8, 16) * u * size, grow: rand(40, 70) * u * size, life: 0.5, color: pick(['#ffffff', '#ffe08a', '#ffb347']) });
     }
+    flashes.push({ x, y, r: 46 * u * size, life: 0.18, max: 0.18 });
+    rings.push({ x, y, r: 10 * u * size, grow: 220 * u * size, life: 0.35, max: 0.35, width: 5 });
+    for (let i = 0; i < 8; i++) {
+      const a = rand(0, Math.PI * 2);
+      const sp = rand(220, 420) * u * Math.sqrt(size);
+      sparks.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.35, max: 0.35 });
+    }
   }
 
   function drop(e) {
@@ -194,6 +212,7 @@ export function shooterGame(arena, api) {
     floaters.push({ x: e.x, y: e.y, text: `+${POINTS[e.type]}`, life: 0.9 });
     if (e.type === 'boss') {
       Sound.bigBoom();
+      shake.kick(20);
       for (let i = 0; i < 8; i++) puff(e.x + rand(-e.w / 2, e.w / 2), e.y + rand(-e.h / 2, e.h / 2), 2);
       bossState = 'done';
       later(1.2, stageClear);
@@ -226,6 +245,8 @@ export function shooterGame(arena, api) {
     power = Math.max(1, power - 1);
     player.inv = 1.6;
     Sound.hurt();
+    shake.kick(12);
+    hurtFlash = 0.35;
     puff(player.x, player.y, 1);
     if (hp <= 0) {
       paused = true;
@@ -458,87 +479,160 @@ export function shooterGame(arena, api) {
 
   /* ---------- drawing ---------- */
 
+  function paintCloud(x, w, h, variant, shadow) {
+    const blobs = [
+      [[0.25, 0.6, 0.22], [0.45, 0.42, 0.3], [0.68, 0.55, 0.24], [0.5, 0.68, 0.26]],
+      [[0.2, 0.62, 0.18], [0.38, 0.45, 0.24], [0.6, 0.4, 0.27], [0.8, 0.6, 0.18], [0.5, 0.68, 0.28]],
+      [[0.3, 0.55, 0.26], [0.55, 0.45, 0.28], [0.75, 0.6, 0.2], [0.45, 0.68, 0.24]]
+    ][variant];
+    if (shadow) {
+      x.fillStyle = 'rgba(10,50,90,1)';
+      for (const [bx, by, br] of blobs) {
+        x.beginPath();
+        x.arc(bx * w, by * h, br * h, 0, Math.PI * 2);
+        x.fill();
+      }
+      return;
+    }
+    for (const [bx, by, br] of blobs) {
+      const g = x.createRadialGradient(bx * w - br * h * 0.3, by * h - br * h * 0.4, br * h * 0.1, bx * w, by * h, br * h);
+      g.addColorStop(0, '#ffffff');
+      g.addColorStop(0.7, '#f3f8ff');
+      g.addColorStop(1, '#d8e6f5');
+      x.fillStyle = g;
+      x.beginPath();
+      x.arc(bx * w, by * h, br * h, 0, Math.PI * 2);
+      x.fill();
+    }
+  }
+
+  const cloudSprites = [0, 1, 2].map((variant) => {
+    const make = (shadow) => {
+      const c = document.createElement('canvas');
+      c.width = 320;
+      c.height = 240;
+      const x = c.getContext('2d');
+      if (shadow) x.filter = 'blur(10px)';
+      paintCloud(x, 320, 240, variant, shadow);
+      return c;
+    };
+    return { cloud: make(false), shadow: make(true) };
+  });
+
   function drawBackground() {
-    const u = unit();
     if (imageReady(ocean)) {
       const w = view.w;
       const h = (ocean.naturalHeight / ocean.naturalWidth) * w;
-      // Scrolling down means the offset runs backwards through the tiles.
-      drawMirrorTiles(ctx, ocean, { axis: 'y', size: h, cross: w, offset: -scroll, length: view.h });
+      const strip = mirrorStrip(oceanLayer, ocean, 'y', h, w);
+      // Flying forward means the sea slides down the screen.
+      drawStrip(ctx, strip, { axis: 'y', size: h, cross: w, offset: -scroll, length: view.h });
       return;
     }
     ctx.fillStyle = '#3aa3e3';
     ctx.fillRect(0, 0, view.w, view.h);
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 2;
-    const waveGap = 46 * u;
-    const off = scroll % waveGap;
-    for (let y = -waveGap + off; y < view.h; y += waveGap) {
-      for (let x = ((y / waveGap) % 2) * 40 * u; x < view.w; x += 90 * u) {
-        ctx.beginPath();
-        ctx.arc(x, y, 10 * u, Math.PI * 1.1, Math.PI * 1.9);
-        ctx.stroke();
-      }
-    }
-    const span = view.h * 1.6;
-    for (const isl of islands) {
-      const y = ((isl.y * span + scroll * 1) % span) - view.h * 0.3;
-      const x = isl.x * view.w;
-      const r = isl.r * Math.max(view.w, view.h);
-      ctx.fillStyle = '#f2d48f';
-      ctx.beginPath();
-      ctx.ellipse(x, y, r * 1.15, r * 0.85, isl.seed, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#4cc96f';
-      ctx.beginPath();
-      ctx.ellipse(x, y, r, r * 0.72, isl.seed, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#2a9a52';
-      ctx.beginPath();
-      ctx.arc(x - r * 0.3, y - r * 0.1, r * 0.2, 0, Math.PI * 2);
-      ctx.arc(x + r * 0.25, y + r * 0.15, r * 0.25, 0, Math.PI * 2);
-      ctx.fill();
-    }
+  }
+
+  function cloudPos(c) {
+    const span = view.h * 1.5;
+    const u = unit() * c.s;
+    return { x: c.x * view.w, y: ((c.y * span + scroll * 1.8) % span) - view.h * 0.25, w: 150 * u, h: 112 * u };
+  }
+
+  function drawCloudShadows() {
+    ctx.globalAlpha = 0.09;
+    clouds.forEach((c, i) => {
+      const p = cloudPos(c);
+      ctx.drawImage(cloudSprites[i % 3].shadow, p.x + 40 * unit(), p.y + 70 * unit(), p.w, p.h);
+    });
+    ctx.globalAlpha = 1;
   }
 
   function drawClouds() {
-    const span = view.h * 1.5;
-    for (const c of clouds) {
-      const y = ((c.y * span + scroll * 1.8) % span) - view.h * 0.25;
-      const x = c.x * view.w;
-      const u = unit() * c.s;
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.globalAlpha = 0.88;
+    clouds.forEach((c, i) => {
+      const p = cloudPos(c);
+      ctx.drawImage(cloudSprites[i % 3].cloud, p.x, p.y, p.w, p.h);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  const SHADOW = 'rgba(8,45,85,0.22)';
+  const shadowOffset = () => ({ x: 18 * unit(), y: 46 * unit() });
+
+  function drawShadows() {
+    const o = shadowOffset();
+    ctx.fillStyle = SHADOW;
+    for (const e of enemies) {
       ctx.beginPath();
-      ctx.arc(x, y, 26 * u, 0, Math.PI * 2);
-      ctx.arc(x + 30 * u, y - 8 * u, 32 * u, 0, Math.PI * 2);
-      ctx.arc(x + 62 * u, y, 24 * u, 0, Math.PI * 2);
+      if (e.type === 'boss') ctx.ellipse(e.x + o.x * 1.6, e.y + o.y * 1.6, e.w * 0.48, e.h * 0.34, 0, 0, Math.PI * 2);
+      else if (e.type === 'gunship') ctx.ellipse(e.x + o.x, e.y + o.y, e.r * 1.3, e.r * 0.7, 0, 0, Math.PI * 2);
+      else ctx.ellipse(e.x + o.x, e.y + o.y, e.r * 0.8, e.r * 0.7, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    {
+      const u = unit();
+      ctx.save();
+      ctx.translate(player.x + o.x, player.y + o.y);
+      ctx.scale(u * 0.9, u * 0.9);
+      ctx.rotate(player.tilt * 0.15);
+      ctx.beginPath();
+      ctx.ellipse(0, 6, 10, 32, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 9, 40, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, 34, 16, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
+  function drawTrail() {
+    for (const p of trail) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max) * 0.7;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawPlane(t) {
-    if (player.inv > 0 && Math.floor(t / 90) % 2 === 0) return;
     const u = unit();
     ctx.save();
+    if (player.inv > 0) ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t / 55);
     ctx.translate(player.x, player.y);
     ctx.scale(u, u);
     ctx.rotate(player.tilt * 0.15);
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     ctx.lineJoin = 'round';
-    ctx.fillStyle = 'rgba(31,42,90,0.18)';
+    const span = 42 * (1 - Math.abs(player.tilt) * 0.2);
+    // wings
+    const wg = ctx.createLinearGradient(0, 2, 0, 16);
+    wg.addColorStop(0, '#ffe680');
+    wg.addColorStop(1, '#f2b21c');
+    ctx.fillStyle = wg;
     ctx.beginPath();
-    ctx.ellipse(10, 34, 34, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffd23f';
-    ctx.beginPath();
-    ctx.moveTo(-42 * (1 - Math.abs(player.tilt) * 0.2), 2);
-    ctx.lineTo(42 * (1 - Math.abs(player.tilt) * 0.2), 2);
+    ctx.moveTo(-span, 4);
+    ctx.quadraticCurveTo(-span, 0, -span + 6, 0);
+    ctx.lineTo(span - 6, 0);
+    ctx.quadraticCurveTo(span, 0, span, 4);
     ctx.lineTo(36, 16);
     ctx.lineTo(-36, 16);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = '#ff5c5c';
+      ctx.beginPath();
+      ctx.arc(side * 26, 8, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = PAPER;
+      ctx.beginPath();
+      ctx.arc(side * 26, 8, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // tail
+    ctx.fillStyle = wg;
     ctx.beginPath();
     ctx.moveTo(-18, 30);
     ctx.lineTo(18, 30);
@@ -547,25 +641,51 @@ export function shooterGame(arena, api) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#3d7fff';
+    // body
+    const bg = ctx.createLinearGradient(-11, 0, 11, 0);
+    bg.addColorStop(0, '#2a5fd1');
+    bg.addColorStop(0.45, '#5b9bff');
+    bg.addColorStop(1, '#2a5fd1');
+    ctx.fillStyle = bg;
     ctx.beginPath();
     ctx.ellipse(0, 6, 11, 34, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#d6f1ff';
+    // cockpit
+    const cg = ctx.createLinearGradient(0, -16, 0, 4);
+    cg.addColorStop(0, '#e9f8ff');
+    cg.addColorStop(1, '#8cc8ee');
+    ctx.fillStyle = cg;
     ctx.beginPath();
     ctx.ellipse(0, -6, 6, 10, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
     ctx.beginPath();
-    ctx.ellipse(0, -30, 18, 4, 0, 0, Math.PI * 2);
+    ctx.ellipse(-2, -10, 1.6, 3.5, -0.3, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#ff5c5c';
+    // propeller
+    ctx.save();
+    ctx.translate(0, -29);
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
     ctx.beginPath();
-    ctx.arc(0, -28, 5, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 19, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(31,42,90,0.6)';
+    ctx.lineWidth = 3;
+    const a = t / 18;
+    ctx.beginPath();
+    ctx.moveTo(-Math.cos(a) * 18, -Math.sin(a) * 2);
+    ctx.lineTo(Math.cos(a) * 18, Math.sin(a) * 2);
+    ctx.stroke();
+    ctx.fillStyle = '#ff5c5c';
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(0, 1, 5, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.restore();
     ctx.restore();
   }
 
@@ -576,16 +696,30 @@ export function shooterGame(arena, api) {
     ctx.lineWidth = Math.max(2, r * 0.12);
     ctx.strokeStyle = INK;
     for (const side of [-1, 1]) {
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.beginPath();
-      ctx.ellipse(side * r * 1.05, -r * 0.5, r * 0.55 * Math.abs(Math.sin(t / 30)) + 2, r * 0.12, 0, 0, Math.PI * 2);
-      ctx.fill();
       ctx.beginPath();
       ctx.moveTo(side * r * 0.6, -r * 0.2);
       ctx.lineTo(side * r * 1.05, -r * 0.5);
       ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(side * r * 1.05, -r * 0.5, r * 0.55, r * 0.14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(31,42,90,0.55)';
+      ctx.lineWidth = Math.max(1.5, r * 0.08);
+      const a = t / 25 + side;
+      ctx.beginPath();
+      ctx.moveTo(side * r * 1.05 - Math.cos(a) * r * 0.5, -r * 0.5);
+      ctx.lineTo(side * r * 1.05 + Math.cos(a) * r * 0.5, -r * 0.5);
+      ctx.stroke();
+      ctx.strokeStyle = INK;
+      ctx.lineWidth = Math.max(2, r * 0.12);
     }
-    ctx.fillStyle = e.flash > 0 ? PAPER : e.type === 'diver' ? '#ff9f1c' : '#ff5c5c';
+    const base = e.type === 'diver' ? ['#ffd08a', '#ff9f1c', '#d97a00'] : ['#ffb3b3', '#ff5c5c', '#c73e3e'];
+    const g = ctx.createRadialGradient(-r * 0.25, -r * 0.3, r * 0.1, 0, 0, r * 0.8);
+    g.addColorStop(0, e.flash > 0 ? PAPER : base[0]);
+    g.addColorStop(0.55, e.flash > 0 ? PAPER : base[1]);
+    g.addColorStop(1, e.flash > 0 ? PAPER : base[2]);
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.75, 0, Math.PI * 2);
     ctx.fill();
@@ -597,7 +731,11 @@ export function shooterGame(arena, api) {
     ctx.stroke();
     ctx.fillStyle = INK;
     ctx.beginPath();
-    ctx.arc(0, r * 0.15, r * 0.14, 0, Math.PI * 2);
+    ctx.arc((player.x > e.x ? 1 : -1) * r * 0.06, r * 0.15, r * 0.14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PAPER;
+    ctx.beginPath();
+    ctx.arc(r * 0.04, r * 0.08, r * 0.05, 0, Math.PI * 2);
     ctx.fill();
     ctx.lineWidth = Math.max(2, r * 0.1);
     ctx.beginPath();
@@ -613,17 +751,25 @@ export function shooterGame(arena, api) {
     ctx.translate(e.x, e.y);
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
-    ctx.fillStyle = e.flash > 0 ? PAPER : '#8a5ce6';
+    const g = ctx.createLinearGradient(0, -r * 0.7, 0, r * 0.7);
+    g.addColorStop(0, e.flash > 0 ? PAPER : '#b79cff');
+    g.addColorStop(0.5, e.flash > 0 ? PAPER : '#8a5ce6');
+    g.addColorStop(1, e.flash > 0 ? PAPER : '#5d36c2');
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(0, 0, r * 1.3, r * 0.7, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.2, -r * 0.38, r * 0.8, r * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
     ctx.fillStyle = '#ffd23f';
     ctx.fillRect(-r * 1.6, -r * 0.15, r * 0.4, r * 0.3);
     ctx.strokeRect(-r * 1.6, -r * 0.15, r * 0.4, r * 0.3);
     ctx.fillRect(r * 1.2, -r * 0.15, r * 0.4, r * 0.3);
     ctx.strokeRect(r * 1.2, -r * 0.15, r * 0.4, r * 0.3);
-    ctx.fillStyle = '#5a3da8';
+    ctx.fillStyle = '#4b2f94';
     ctx.beginPath();
     ctx.arc(0, r * 0.4, r * 0.35, 0, Math.PI);
     ctx.fill();
@@ -646,30 +792,52 @@ export function shooterGame(arena, api) {
   function drawBoss(e, t) {
     const { w, h } = e;
     ctx.save();
-    ctx.translate(e.x, e.y);
+    ctx.translate(e.x, e.y + Math.sin(t / 500) * 3);
     ctx.lineWidth = 4;
     ctx.strokeStyle = INK;
     ctx.lineJoin = 'round';
-    ctx.fillStyle = e.flash > 0 ? PAPER : '#6a4bd1';
+    const g = ctx.createLinearGradient(0, -h * 0.44, 0, h * 0.28);
+    g.addColorStop(0, e.flash > 0 ? PAPER : '#9a7cf0');
+    g.addColorStop(0.55, e.flash > 0 ? PAPER : '#6a4bd1');
+    g.addColorStop(1, e.flash > 0 ? PAPER : '#4a2fa6');
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(0, -h * 0.08, w * 0.5, h * 0.36, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle = '#8a5ce6';
+    ctx.save();
+    ctx.clip();
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
     for (let i = -2; i <= 2; i++) {
       ctx.beginPath();
-      ctx.ellipse(i * w * 0.15, -h * 0.08, w * 0.04, h * 0.33, 0, 0, Math.PI * 2);
+      ctx.ellipse(i * w * 0.15, -h * 0.08, w * 0.035, h * 0.4, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = '#ffd23f';
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(-w * 0.1, -h * 0.32, w * 0.32, h * 0.06, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.ellipse(0, -h * 0.08, w * 0.5, h * 0.36, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    const gg = ctx.createLinearGradient(0, h * 0.2, 0, h * 0.42);
+    gg.addColorStop(0, '#ffe680');
+    gg.addColorStop(1, '#f2b21c');
+    ctx.fillStyle = gg;
     ctx.fillRect(-w * 0.3, h * 0.2, w * 0.6, h * 0.22);
     ctx.strokeRect(-w * 0.3, h * 0.2, w * 0.6, h * 0.22);
+    const charge = e.y >= e.stopY && e.fireIn < 0.4;
     for (const tx of [-0.22, 0, 0.22]) {
       ctx.fillStyle = INK;
       ctx.fillRect(tx * w - 5, h * 0.4, 10, h * 0.14);
+      if (charge) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.drawImage(glowSprite('rgba(255,120,60,0.9)'), tx * w - 14, h * 0.5 - 10, 28, 28);
+        ctx.globalCompositeOperation = 'source-over';
+      }
     }
     for (const side of [-1, 1]) {
-      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fillStyle = 'rgba(255,255,255,0.65)';
       ctx.beginPath();
       ctx.ellipse(side * w * 0.52, -h * 0.08, 6, h * 0.3 * Math.abs(Math.sin(t / 40)) + 4, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -698,8 +866,13 @@ export function shooterGame(arena, api) {
   function bar(x, y, w, h, frac) {
     ctx.fillStyle = 'rgba(255,253,246,0.85)';
     ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = '#ff5c5c';
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#ff8a8a');
+    g.addColorStop(1, '#e03c3c');
+    ctx.fillStyle = g;
     ctx.fillRect(x, y, w * clamp(frac, 0, 1), h);
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.fillRect(x, y + 1, w * clamp(frac, 0, 1), h * 0.3);
     ctx.strokeStyle = INK;
     ctx.lineWidth = 2;
     ctx.strokeRect(x, y, w, h);
@@ -708,13 +881,22 @@ export function shooterGame(arena, api) {
   function drawPickup(p, t) {
     const u = unit();
     const bob = Math.sin(p.t * 5) * 3 * u;
+    const halo = { star: 'rgba(255,220,90,0.9)', heart: 'rgba(255,120,150,0.9)', power: 'rgba(120,240,150,0.9)' }[p.kind];
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t / 150 + p.x);
+    ctx.drawImage(glowSprite(halo), p.x - 34 * u, p.y + bob - 34 * u, 68 * u, 68 * u);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     ctx.save();
     ctx.translate(p.x, p.y + bob);
     ctx.lineWidth = 3;
     ctx.strokeStyle = INK;
     if (p.kind === 'star') {
       ctx.rotate(t / 400);
-      ctx.fillStyle = '#ffd23f';
+      const g = ctx.createRadialGradient(-3, -4, 1, 0, 0, 16 * u);
+      g.addColorStop(0, '#fff6c2');
+      g.addColorStop(1, '#ffc21f');
+      ctx.fillStyle = g;
       ctx.beginPath();
       for (let i = 0; i < 10; i++) {
         const rr = (i % 2 ? 7 : 16) * u;
@@ -724,53 +906,72 @@ export function shooterGame(arena, api) {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-    } else if (p.kind === 'heart') {
+      ctx.restore();
+      return;
+    }
+    if (p.kind === 'heart') {
       ctx.restore();
       hearts(ctx, p.x - 14 * u, p.y + bob - 12 * u, 28 * u, 1, 1);
       return;
-    } else {
-      ctx.fillStyle = '#4cc96f';
-      ctx.beginPath();
-      ctx.arc(0, 0, 16 * u, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      outlinedText(ctx, 'P', 0, 1, 20 * u, { fill: PAPER, stroke: INK, width: 4 });
     }
+    const g = ctx.createRadialGradient(-5 * u, -6 * u, 2, 0, 0, 16 * u);
+    g.addColorStop(0, '#b6f5c8');
+    g.addColorStop(1, '#2fb36a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, 16 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
     ctx.restore();
+    outlinedText(ctx, 'P', p.x, p.y + bob + 1, 20 * u, { fill: PAPER, stroke: INK, width: 4 });
   }
 
-  function draw(t) {
+  function drawShots() {
     const u = unit();
-    drawBackground();
-    for (const p of pickups) drawPickup(p, t);
-    for (const e of enemies) {
-      if (e.type === 'boss') drawBoss(e, t);
-      else if (e.type === 'gunship') drawGunship(e);
-      else drawDrone(e, t);
-    }
-    ctx.fillStyle = '#fff36b';
-    ctx.strokeStyle = INK;
-    ctx.lineWidth = 2;
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = glowSprite('rgba(255,230,90,0.85)');
+    for (const b of shots) ctx.drawImage(glow, b.x - 12 * u, b.y - 16 * u, 24 * u, 32 * u);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#fffbd1';
+    ctx.strokeStyle = '#e0a400';
+    ctx.lineWidth = 1.5;
     for (const b of shots) {
       ctx.beginPath();
-      ctx.ellipse(b.x, b.y, 3.5 * u, 10 * u, Math.atan2(b.vx, -b.vy), 0, Math.PI * 2);
+      ctx.ellipse(b.x, b.y, 3 * u, 9 * u, Math.atan2(b.vx, -b.vy), 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
-    drawPlane(t);
+  }
+
+  function drawOrbs(t) {
+    ctx.globalCompositeOperation = 'lighter';
+    const glow = glowSprite('rgba(255,110,60,0.8)');
+    for (const o of orbs) ctx.drawImage(glow, o.x - o.r * 2.4, o.y - o.r * 2.4, o.r * 4.8, o.r * 4.8);
+    ctx.globalCompositeOperation = 'source-over';
     for (const o of orbs) {
-      ctx.fillStyle = '#ff7a2f';
+      const pulse = 1 + Math.sin(t / 80 + o.x) * 0.08;
+      const g = ctx.createRadialGradient(o.x - o.r * 0.3, o.y - o.r * 0.3, 1, o.x, o.y, o.r * pulse);
+      g.addColorStop(0, '#fff1c4');
+      g.addColorStop(0.5, '#ff9a3d');
+      g.addColorStop(1, '#e8501f');
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+      ctx.arc(o.x, o.y, o.r * pulse, 0, Math.PI * 2);
       ctx.fill();
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = INK;
       ctx.stroke();
-      ctx.fillStyle = '#fff1c4';
-      ctx.beginPath();
-      ctx.arc(o.x - o.r * 0.25, o.y - o.r * 0.25, o.r * 0.4, 0, Math.PI * 2);
-      ctx.fill();
     }
+  }
+
+  function drawEffects() {
+    ctx.globalCompositeOperation = 'lighter';
+    for (const f of flashes) {
+      ctx.globalAlpha = Math.max(0, f.life / f.max);
+      ctx.drawImage(glowSprite('rgba(255,240,180,1)'), f.x - f.r, f.y - f.r, f.r * 2, f.r * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     for (const p of puffs) {
       ctx.globalAlpha = Math.max(0, p.life / 0.5);
       ctx.fillStyle = p.color;
@@ -778,9 +979,52 @@ export function shooterGame(arena, api) {
       ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
       ctx.fill();
     }
+    for (const r of rings) {
+      ctx.globalAlpha = Math.max(0, r.life / r.max);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = r.width * (r.life / r.max) + 1;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#ffd23f';
+    ctx.lineCap = 'round';
+    for (const p of sparks) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.05, p.y - p.vy * 0.05);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
     ctx.globalAlpha = 1;
+  }
+
+  function draw(t, dt) {
+    ctx.save();
+    shake.apply(ctx, dt);
+    drawBackground();
+    drawCloudShadows();
+    drawShadows();
+    for (const p of pickups) drawPickup(p, t);
+    drawTrail();
+    for (const e of enemies) {
+      if (e.type === 'boss') drawBoss(e, t);
+      else if (e.type === 'gunship') drawGunship(e);
+      else drawDrone(e, t);
+    }
+    drawShots();
+    drawPlane(t);
+    drawOrbs(t);
+    drawEffects();
     drawClouds();
     for (const f of floaters) outlinedText(ctx, f.text, f.x, f.y, 20, { alpha: Math.max(0, f.life), width: 5 });
+    ctx.restore();
+    if (hurtFlash > 0) {
+      ctx.fillStyle = `rgba(255,70,70,${hurtFlash})`;
+      ctx.fillRect(0, 0, view.w, view.h);
+    }
 
     hearts(ctx, 14, 14, 24, hp, MAX_HP);
     outlinedText(ctx, `Stage ${stage}`, view.w - 14, 28, 22, { align: 'right', width: 6 });
@@ -788,8 +1032,10 @@ export function shooterGame(arena, api) {
       ctx.fillStyle = i < power ? '#4cc96f' : 'rgba(255,253,246,0.6)';
       ctx.strokeStyle = INK;
       ctx.lineWidth = 2;
-      ctx.fillRect(14 + i * 16, 48, 12, 12);
-      ctx.strokeRect(14 + i * 16, 48, 12, 12);
+      ctx.beginPath();
+      ctx.arc(20 + i * 18, 54, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
     }
     const boss = enemies.find((e) => e.type === 'boss');
     if (boss) {
@@ -818,19 +1064,49 @@ export function shooterGame(arena, api) {
   s.add(
     loop((dt, t) => {
       if (!paused) update(dt);
+      const u = unit();
+      if (!paused) {
+        trailIn -= dt;
+        if (trailIn <= 0) {
+          trailIn = 0.05;
+          trail.push({ x: player.x + rand(-3, 3) * u, y: player.y + 40 * u, r: rand(3, 5) * u, vy: 120 * u, life: 0.5, max: 0.5 });
+        }
+      }
+      for (const p of trail) {
+        p.y += p.vy * dt;
+        p.r += 6 * u * dt;
+        p.life -= dt;
+      }
+      trail = trail.filter((p) => p.life > 0);
       for (const p of puffs) {
         p.r += p.grow * dt;
         p.life -= dt;
       }
       puffs = puffs.filter((p) => p.life > 0);
+      for (const r of rings) {
+        r.r += r.grow * dt;
+        r.life -= dt;
+      }
+      rings = rings.filter((r) => r.life > 0);
+      for (const f of flashes) f.life -= dt;
+      flashes = flashes.filter((f) => f.life > 0);
+      for (const p of sparks) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= 0.94;
+        p.vy *= 0.94;
+        p.life -= dt;
+      }
+      sparks = sparks.filter((p) => p.life > 0);
       for (const f of floaters) {
         f.y -= 40 * dt;
         f.life -= dt;
       }
       floaters = floaters.filter((f) => f.life > 0);
+      hurtFlash = Math.max(0, hurtFlash - dt);
       if (hint < 1) hint = Math.max(0, hint - dt * 1.2);
-      draw(t);
-    })
+      draw(t, dt);
+    }, cv)
   );
 
   s.add(() => cv.destroy());

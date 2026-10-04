@@ -38,6 +38,10 @@
   -webkit-tap-highlight-color: transparent;
 }
 .pr-root.pr-playing { overflow: hidden; }
+.pr-root { overscroll-behavior: none; }
+.pr-stage, .pr-home { animation: pr-fade-in 0.28s ease both; }
+@keyframes pr-fade-in { from { opacity: 0; transform: translateY(8px); } }
+.pr-arena { transform: translateZ(0); }
 .pr-root *, .pr-root *::before, .pr-root *::after { box-sizing: border-box; }
 :where(.pr-root) :where(button, a) { font: inherit; color: inherit; }
 .pr-root :focus-visible { outline: 4px solid var(--ocean); outline-offset: 3px; }

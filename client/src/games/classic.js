@@ -6,14 +6,17 @@ import {
   PAPER,
   Sound,
   drawCloud,
-  drawSky,
+  drawEmoji,
+  glowSprite,
   hintText,
   loop,
   makeCanvas,
+  makeLayer,
   pick,
   pointIn,
   say,
   scope,
+  shade,
   shuffle,
   store
 } from './kit.js';
@@ -35,6 +38,27 @@ export function balloonGame(arena, api) {
   let hint = 1;
   const clouds = [0.15, 0.55, 0.85].map((f, i) => ({ f, y: 50 + i * 70, s: 0.8 + i * 0.25, v: 0.006 + i * 0.004 }));
   const baseRadius = () => Math.max(34, Math.min(62, view.w * 0.07));
+  const skyLayer = makeLayer(cv);
+
+  function paintSky(x, w, h) {
+    const g = x.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, '#7cc4ff');
+    g.addColorStop(1, '#e9f6ff');
+    x.fillStyle = g;
+    x.fillRect(0, 0, w, h);
+    const sun = x.createRadialGradient(w - 60, 60, 10, w - 60, 60, 120);
+    sun.addColorStop(0, 'rgba(255,240,170,0.9)');
+    sun.addColorStop(1, 'rgba(255,240,170,0)');
+    x.fillStyle = sun;
+    x.fillRect(w - 200, 0, 200, 200);
+    const disc = x.createRadialGradient(w - 70, 50, 4, w - 60, 60, 34);
+    disc.addColorStop(0, '#fff6c2');
+    disc.addColorStop(1, '#ffc93c');
+    x.fillStyle = disc;
+    x.beginPath();
+    x.arc(w - 60, 60, 34, 0, Math.PI * 2);
+    x.fill();
+  }
 
   function spawn() {
     const r = baseRadius() * (0.85 + Math.random() * 0.3);
@@ -102,7 +126,7 @@ export function balloonGame(arena, api) {
     ctx.moveTo(x, bottom + 6);
     ctx.quadraticCurveTo(x - 12, bottom + r * 0.7, x + 5, bottom + r * 1.5);
     ctx.stroke();
-    ctx.fillStyle = b.color;
+    ctx.fillStyle = shade(b.color, -0.15);
     ctx.strokeStyle = INK;
     ctx.lineWidth = 3;
     ctx.beginPath();
@@ -112,11 +136,16 @@ export function balloonGame(arena, api) {
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.45, r * 0.1, x, y, r * 1.2);
+    g.addColorStop(0, shade(b.color, 0.45));
+    g.addColorStop(0.55, b.color);
+    g.addColorStop(1, shade(b.color, -0.25));
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(x, y, r, r * 1.18, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
     ctx.beginPath();
     ctx.ellipse(x - r * 0.4, y - r * 0.48, r * 0.16, r * 0.3, -0.5, 0, Math.PI * 2);
     ctx.fill();
@@ -156,11 +185,7 @@ export function balloonGame(arena, api) {
       floaters = floaters.filter((f) => f.life > 0);
       if (hint < 1) hint = Math.max(0, hint - dt * 2);
 
-      drawSky(ctx, view, '#8fcbff', '#e6f5ff');
-      ctx.fillStyle = '#ffd23f';
-      ctx.beginPath();
-      ctx.arc(view.w - 60, 60, 34, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.drawImage(skyLayer('sky', view.w, view.h, paintSky), 0, 0, view.w, view.h);
       for (const c of clouds) {
         c.f = (c.f + c.v * dt) % 1.2;
         drawCloud(ctx, c.f * (view.w + 160) - 120, c.y, c.s);
@@ -187,7 +212,7 @@ export function balloonGame(arena, api) {
         ctx.restore();
       }
       if (hint > 0) hintText(ctx, view, 'Tap a balloon!', hint);
-    })
+    }, cv)
   );
 
   s.add(() => cv.destroy());
@@ -365,6 +390,44 @@ export function catchGame(arena, api) {
   const basketW = () => Math.max(100, Math.min(180, view.w * 0.24));
   const basketH = () => basketW() * 0.48;
   const groundY = () => view.h - Math.max(26, view.h * 0.06);
+  const fieldLayer = makeLayer(cv);
+
+  function paintField(x, w, h) {
+    const gy = groundY();
+    const g = x.createLinearGradient(0, 0, 0, gy);
+    g.addColorStop(0, '#ffe2a8');
+    g.addColorStop(1, '#fff7e2');
+    x.fillStyle = g;
+    x.fillRect(0, 0, w, h);
+    const hill = (cx, r, color) => {
+      x.fillStyle = color;
+      x.beginPath();
+      x.arc(cx, gy + r * 0.25, r, Math.PI, 0);
+      x.fill();
+    };
+    hill(w * 0.15, w * 0.3, '#ffd0de');
+    hill(w * 0.8, w * 0.36, '#ffc4d6');
+    hill(w * 0.45, w * 0.22, '#bfeccc');
+    const grass = x.createLinearGradient(0, gy, 0, h);
+    grass.addColorStop(0, '#7fdc95');
+    grass.addColorStop(1, '#4cb96c');
+    x.fillStyle = grass;
+    x.fillRect(0, gy, w, h - gy);
+    x.strokeStyle = INK;
+    x.lineWidth = 4;
+    x.beginPath();
+    x.moveTo(0, gy);
+    x.lineTo(w, gy);
+    x.stroke();
+    x.strokeStyle = 'rgba(40,120,60,0.5)';
+    x.lineWidth = 2;
+    for (let i = 0; i < w; i += 18) {
+      x.beginPath();
+      x.moveTo(i, gy + 3);
+      x.lineTo(i + 4, gy + 10 + ((i * 7) % 6));
+      x.stroke();
+    }
+  }
 
   function spawn() {
     const star = Math.random() < 0.08;
@@ -409,7 +472,10 @@ export function catchGame(arena, api) {
     const h = basketH();
     const top = groundY() - h;
     ctx.lineJoin = 'round';
-    ctx.fillStyle = '#e39a4c';
+    const bg = ctx.createLinearGradient(0, top, 0, top + h);
+    bg.addColorStop(0, '#f0b26a');
+    bg.addColorStop(1, '#c97a35');
+    ctx.fillStyle = bg;
     ctx.strokeStyle = INK;
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -438,6 +504,12 @@ export function catchGame(arena, api) {
     ctx.restore();
     ctx.strokeStyle = INK;
     ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, top);
+    ctx.lineTo(x + w / 2, top);
+    ctx.lineTo(x + w * 0.38, top + h);
+    ctx.lineTo(x - w * 0.38, top + h);
+    ctx.closePath();
     ctx.stroke();
     ctx.fillStyle = '#b86d2a';
     ctx.beginPath();
@@ -446,16 +518,6 @@ export function catchGame(arena, api) {
     ctx.stroke();
   }
 
-  function drawEmoji(glyph, x, y, size, rot) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(rot);
-    ctx.font = `${Math.round(size)}px ${EMOJI_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(glyph, 0, 0);
-    ctx.restore();
-  }
 
   s.add(
     loop((dt) => {
@@ -502,21 +564,22 @@ export function catchGame(arena, api) {
       floaters = floaters.filter((f) => f.life > 0);
       if (hint < 1) hint = Math.max(0, hint - dt * 2);
 
-      drawSky(ctx, view, '#ffe9b8', '#fff7e2');
-      ctx.fillStyle = '#ffd6e2';
-      ctx.beginPath();
-      ctx.arc(view.w * 0.2, groundY(), view.w * 0.28, Math.PI, 0);
-      ctx.arc(view.w * 0.75, groundY(), view.w * 0.34, Math.PI, 0);
-      ctx.fill();
-      ctx.fillStyle = '#6fd38b';
-      ctx.fillRect(0, groundY(), view.w, view.h - groundY());
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(0, groundY());
-      ctx.lineTo(view.w, groundY());
-      ctx.stroke();
-      for (const it of items) drawEmoji(it.glyph, it.x, it.y, it.size, it.rot);
+      ctx.drawImage(fieldLayer('field', view.w, view.h, paintField), 0, 0, view.w, view.h);
+      for (const it of items) {
+        const k = Math.max(0, Math.min(1, it.y / groundY()));
+        ctx.fillStyle = `rgba(40,80,40,${0.25 * k})`;
+        ctx.beginPath();
+        ctx.ellipse(it.x, groundY() + 6, it.size * 0.4 * (0.5 + k * 0.5), 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      for (const it of items) {
+        if (it.value > 1) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.drawImage(glowSprite('rgba(255,220,90,0.8)'), it.x - it.size, it.y - it.size, it.size * 2, it.size * 2);
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        drawEmoji(ctx, it.glyph, it.x, it.y, it.size, it.rot);
+      }
       drawBasket(basketX);
       for (const f of floaters) {
         ctx.save();
@@ -532,7 +595,7 @@ export function catchGame(arena, api) {
         ctx.restore();
       }
       if (hint > 0) hintText(ctx, view, 'Slide the basket!', hint);
-    })
+    }, cv)
   );
 
   s.add(() => cv.destroy());

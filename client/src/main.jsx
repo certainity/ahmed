@@ -196,6 +196,13 @@ const BookmarkIcon = ({ filled = false }) => (
     : <Svg stroke size={20}><path d="M6.8 4.8h10.4v15l-5.2-3.6-5.2 3.6v-15z" /></Svg>
 );
 const SyncIcon = () => <Svg size={20}><path d="M17.65 6.35A8 8 0 1 0 20 12h-2.1a6 6 0 1 1-1.6-4.06L13.5 10.5H20V4l-2.35 2.35z" /></Svg>;
+const InstallIcon = () => (
+  <Svg stroke size={20}>
+    <path d="M12 4v10" />
+    <path d="M7.5 10 12 14.5 16.5 10" />
+    <path d="M5 19h14" />
+  </Svg>
+);
 const GamesIcon = () => (
   <Svg stroke size={20}>
     <rect x="2.5" y="7" width="19" height="11" rx="5.5" />
@@ -675,8 +682,53 @@ const SORT_CHIPS = [
 
 const GRID_BATCH = 48;
 
+/* ---------- installable app ---------- */
+
+let deferredInstall = null;
+const installListeners = new Set();
+
+function setupPwa() {
+  if (IS_MOVIE_SITE || document.querySelector('link[rel="manifest"]')) return;
+  const manifest = document.createElement('link');
+  manifest.rel = 'manifest';
+  manifest.href = '/manifest.webmanifest';
+  document.head.append(manifest);
+  const notify = () => installListeners.forEach((fn) => fn());
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredInstall = event;
+    notify();
+  });
+  window.addEventListener('appinstalled', () => {
+    deferredInstall = null;
+    notify();
+  });
+  if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    });
+  }
+}
+
+function useInstallPrompt() {
+  const [, rerender] = useState(0);
+  useEffect(() => {
+    const onChange = () => rerender((n) => n + 1);
+    installListeners.add(onChange);
+    return () => installListeners.delete(onChange);
+  }, []);
+  if (!deferredInstall) return null;
+  return () => {
+    const event = deferredInstall;
+    deferredInstall = null;
+    installListeners.forEach((fn) => fn());
+    event.prompt();
+  };
+}
+
 function App() {
   const { videos, library, loading, error, refreshedAt, refresh } = useVideos();
+  const install = useInstallPrompt();
   const [query, setQuery] = useState('');
   const [activeFolder, setActiveFolder] = useState('all');
   const [sortMode, setSortMode] = useState('title');
@@ -822,6 +874,12 @@ function App() {
           <button className="search-btn" type="submit" aria-label="Search"><SearchIcon /></button>
         </form>
         <div className="topbar-end">
+          {install ? (
+            <button className="sync-btn" onClick={install} type="button">
+              <InstallIcon />
+              <span>Install app</span>
+            </button>
+          ) : null}
           {IS_MOVIE_SITE ? null : (
             <a className="sync-btn games-link" href="#games">
               <GamesIcon />
@@ -956,6 +1014,8 @@ function Root() {
     </>
   );
 }
+
+setupPwa();
 
 const container = document.getElementById('root');
 const root = container._reactRoot || (container._reactRoot = createRoot(container));

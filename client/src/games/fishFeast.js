@@ -1,16 +1,61 @@
-import { INK, PAPER, Sound, clamp, hearts, hintText, imageReady, loadImage, loop, makeCanvas, outlinedText, pick, pointIn, rand, say, scope, trackKeys } from './kit.js';
+import {
+  INK,
+  PAPER,
+  Sound,
+  clamp,
+  hearts,
+  hintText,
+  imageReady,
+  loadImage,
+  loop,
+  makeCanvas,
+  makeLayer,
+  makeShake,
+  outlinedText,
+  pick,
+  pointIn,
+  rand,
+  say,
+  scope,
+  trackKeys
+} from './kit.js';
 import seaArt from './art/fish-bg.webp';
 
 const STAGE_SIZES = [16, 25, 36];
 const STAGE_NEED = [10, 16, 22];
 const MAX_LIVES = 5;
+// base, back (darker), belly (lighter)
 const FISH_COLORS = [
-  ['#ffd23f', '#ff9f1c'],
-  ['#4cc96f', '#2a9a52'],
-  ['#5ec8ff', '#2f86d9'],
-  ['#ff8fc7', '#e0569a'],
-  ['#b39cff', '#7d5ce6']
+  ['#ffd23f', '#f0a21a', '#fff3b8'],
+  ['#4cc96f', '#2a9a52', '#c8f5d4'],
+  ['#5ec8ff', '#2f86d9', '#d6f1ff'],
+  ['#ff8fc7', '#e0569a', '#ffe0ef'],
+  ['#b39cff', '#7d5ce6', '#ece4ff']
 ];
+const PLAYER_COLORS = ['#ff8a3d', '#e0601a', '#ffd2b0'];
+const HUNTER_COLORS = ['#ff6b6b', '#c73e3e', '#ffd0d0'];
+
+function bubbleSprite() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 48;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(18, 16, 2, 24, 24, 22);
+  g.addColorStop(0, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.6, 'rgba(255,255,255,0.08)');
+  g.addColorStop(1, 'rgba(255,255,255,0.35)');
+  x.fillStyle = g;
+  x.beginPath();
+  x.arc(24, 24, 22, 0, Math.PI * 2);
+  x.fill();
+  x.strokeStyle = 'rgba(255,255,255,0.75)';
+  x.lineWidth = 2;
+  x.stroke();
+  x.fillStyle = 'rgba(255,255,255,0.9)';
+  x.beginPath();
+  x.ellipse(16, 15, 5, 3, -0.6, 0, Math.PI * 2);
+  x.fill();
+  return c;
+}
 
 export function fishGame(arena, api) {
   const s = scope();
@@ -18,6 +63,10 @@ export function fishGame(arena, api) {
   const { ctx, view, canvas } = cv;
   const keys = trackKeys(s);
   const sea = loadImage(seaArt);
+  const seaLayer = makeLayer(cv);
+  const beamLayer = makeLayer(cv);
+  const bubble = bubbleSprite();
+  const shake = makeShake();
 
   let level = 1;
   let lives = MAX_LIVES;
@@ -30,11 +79,12 @@ export function fishGame(arena, api) {
   let fish = [];
   let bubbles = [];
   let bits = [];
+  let rings = [];
   let floaters = [];
   let spawnIn = 0.3;
   let target = null;
-  const player = { x: 0, y: 0, vx: 0, vy: 0, size: STAGE_SIZES[0], face: 1, inv: 2.5, mouth: 0 };
-  const weeds = Array.from({ length: 9 }, (_, i) => ({ f: (i + 0.5) / 9 + rand(-0.03, 0.03), h: rand(0.12, 0.26), phase: rand(0, 6) }));
+  let flash = 0;
+  const player = { x: 0, y: 0, vx: 0, vy: 0, size: STAGE_SIZES[0], face: 1, inv: 2.5, mouth: 0, pop: 0, blink: 2, trail: 0 };
 
   const unit = () => clamp(Math.min(view.w, view.h) / 560, 0.65, 1.5);
   const seaFloor = () => view.h - 26 * unit();
@@ -83,27 +133,32 @@ export function fishGame(arena, api) {
     const fromLeft = Math.random() < 0.5;
     const u = unit();
     const speed = (rand(55, 95) + level * 8) * (predator ? 0.9 : 1) * clamp(30 / size, 0.6, 1.6);
+    const y = rand(view.h * 0.12, seaFloor() - size * u);
     fish.push({
       x: fromLeft ? -size * 2 * u : view.w + size * 2 * u,
-      y: rand(view.h * 0.12, seaFloor() - size * u),
-      baseY: 0,
+      y,
+      baseY: y,
       size,
       face: fromLeft ? 1 : -1,
       speed,
       predator,
-      colors: predator ? ['#ff6b6b', '#c73e3e'] : pick(FISH_COLORS),
+      colors: predator ? HUNTER_COLORS : pick(FISH_COLORS),
       phase: rand(0, 6),
-      mouth: 0
+      mouth: 0,
+      blink: rand(1, 5)
     });
-    fish[fish.length - 1].baseY = fish[fish.length - 1].y;
   }
 
-  function burst(x, y, color, n = 10) {
+  function burst(x, y, color, n = 10, speed = 200) {
     for (let i = 0; i < n; i++) {
       const a = rand(0, Math.PI * 2);
-      const sp = rand(60, 200);
-      bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, color, r: rand(2, 5) });
+      const sp = rand(speed * 0.3, speed);
+      bits.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, max: 0.6, color, r: rand(2, 5) });
     }
+  }
+
+  function addBubble(x, y, r, v = rand(30, 70)) {
+    bubbles.push({ x, y, r, v, wob: rand(0, 6) });
   }
 
   function eat(f) {
@@ -116,12 +171,17 @@ export function fishGame(arena, api) {
     hint = Math.min(hint, 0.99);
     Sound.chomp();
     const u = unit();
-    burst(player.x + player.face * player.size * u, player.y, '#ffffff', 8);
+    const mx = player.x + player.face * player.size * u;
+    rings.push({ x: mx, y: player.y, r: player.size * u * 0.4, grow: 160 * u, life: 0.35, max: 0.35, color: 'rgba(255,255,255,0.9)', width: 3 });
+    for (let i = 0; i < 4; i++) addBubble(mx + rand(-8, 8), player.y + rand(-8, 8), rand(3, 6), rand(60, 110));
     floaters.push({ x: f.x, y: f.y, text: `+${points}`, life: 1 });
     if (growth >= STAGE_NEED[stage]) {
       if (stage < STAGE_SIZES.length - 1) {
         stage++;
         growth = 0;
+        player.pop = 1;
+        rings.push({ x: player.x, y: player.y, r: player.size * u, grow: 260 * u, life: 0.6, max: 0.6, color: 'rgba(255,210,63,0.95)', width: 6 });
+        burst(player.x, player.y, '#ffd23f', 18, 260);
         Sound.grow();
         api.cheer('You grew!');
         say('You grew bigger!');
@@ -151,7 +211,9 @@ export function fishGame(arena, api) {
   function hurt(f) {
     lives--;
     Sound.hurt();
-    burst(player.x, player.y, '#ff9f1c', 14);
+    burst(player.x, player.y, '#ff9f1c', 16);
+    shake.kick(12);
+    flash = 0.3;
     f.mouth = 0.3;
     if (lives <= 0) {
       paused = true;
@@ -175,53 +237,84 @@ export function fishGame(arena, api) {
     if (e.pointerType === 'mouse' || e.buttons) target = pointIn(e, canvas);
   });
 
-  function drawFish(x, y, size, face, colors, t, { player: isPlayer = false, angry = false, mouth = 0, blink = false } = {}) {
-    if (blink) return;
+  /* ---------- drawing ---------- */
+
+  function drawFish(x, y, size, face, colors, t, { isPlayer = false, angry = false, mouth = 0, blink = 0, alpha = 1, pop = 0 } = {}) {
     const u = unit();
-    const r = size * u;
-    const tail = Math.sin(t / 120) * 0.25;
+    const r = size * u * (1 + Math.sin(pop * Math.PI) * 0.25);
+    const wag = Math.sin(t / 110) * 0.22;
+    const fin = Math.sin(t / 160) * 0.35;
     ctx.save();
+    ctx.globalAlpha = alpha;
     ctx.translate(x, y);
     ctx.scale(face, 1);
+    ctx.rotate(Math.sin(t / 400) * 0.04);
     ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(2, r * 0.09);
+    ctx.lineCap = 'round';
+    const line = Math.max(2, r * 0.085);
+    ctx.lineWidth = line;
     ctx.strokeStyle = INK;
+
     // tail
     ctx.fillStyle = colors[1];
     ctx.beginPath();
-    ctx.moveTo(-r * 0.8, 0);
-    ctx.lineTo(-r * 1.5, -r * (0.6 + tail));
-    ctx.lineTo(-r * 1.5, r * (0.6 - tail));
-    ctx.closePath();
+    ctx.moveTo(-r * 0.78, 0);
+    ctx.quadraticCurveTo(-r * 1.15, -r * 0.18, -r * 1.55, -r * (0.62 - wag));
+    ctx.quadraticCurveTo(-r * 1.32, 0, -r * 1.55, r * (0.62 + wag));
+    ctx.quadraticCurveTo(-r * 1.15, r * 0.18, -r * 0.78, 0);
     ctx.fill();
     ctx.stroke();
     // top fin
     ctx.beginPath();
-    ctx.moveTo(-r * 0.3, -r * 0.5);
-    ctx.quadraticCurveTo(-r * 0.05, -r * 1.05, r * 0.35, -r * 0.55);
+    ctx.moveTo(-r * 0.42, -r * 0.48);
+    ctx.quadraticCurveTo(-r * 0.12, -r * 1.12, r * 0.38, -r * 0.55);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-    // body
-    ctx.fillStyle = colors[0];
+
+    // body with back-to-belly shading
+    const g = ctx.createLinearGradient(0, -r * 0.64, 0, r * 0.64);
+    g.addColorStop(0, colors[1]);
+    g.addColorStop(0.42, colors[0]);
+    g.addColorStop(1, colors[2]);
+    ctx.fillStyle = g;
     ctx.beginPath();
     ctx.ellipse(0, 0, r, r * 0.64, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.stroke();
+
     if (isPlayer) {
       ctx.save();
-      ctx.beginPath();
-      ctx.ellipse(0, 0, r, r * 0.64, 0, 0, Math.PI * 2);
       ctx.clip();
       ctx.fillStyle = PAPER;
-      for (const sx of [-0.45, 0.15]) {
-        ctx.fillRect(sx * r, -r, r * 0.18, r * 2);
+      for (const sx of [-0.45, 0.12]) {
+        ctx.beginPath();
+        ctx.ellipse(sx * r + r * 0.09, 0, r * 0.1, r * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
-      ctx.beginPath();
-      ctx.ellipse(0, 0, r, r * 0.64, 0, 0, Math.PI * 2);
-      ctx.stroke();
     }
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 0.64, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // sheen
+    ctx.fillStyle = 'rgba(255,255,255,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(r * 0.05, -r * 0.33, r * 0.45, r * 0.12, -0.08, 0, Math.PI * 2);
+    ctx.fill();
+
+    // side fin
+    ctx.save();
+    ctx.translate(-r * 0.08, r * 0.16);
+    ctx.rotate(0.5 + fin);
+    ctx.fillStyle = colors[1];
+    ctx.beginPath();
+    ctx.ellipse(-r * 0.16, 0, r * 0.24, r * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = line * 0.8;
+    ctx.stroke();
+    ctx.restore();
+
     // mouth
     if (mouth > 0) {
       ctx.fillStyle = INK;
@@ -232,29 +325,49 @@ export function fishGame(arena, api) {
       ctx.closePath();
       ctx.fill();
     } else {
+      ctx.lineWidth = line * 0.9;
       ctx.beginPath();
-      ctx.moveTo(r * 0.7, r * 0.18);
-      ctx.quadraticCurveTo(r * 0.85, r * 0.26, r * 0.95, r * 0.14);
+      ctx.moveTo(r * 0.68, r * 0.17);
+      ctx.quadraticCurveTo(r * 0.84, r * 0.27, r * 0.95, r * 0.13);
       ctx.stroke();
     }
-    // eye
+    if (isPlayer) {
+      ctx.fillStyle = 'rgba(255,92,138,0.45)';
+      ctx.beginPath();
+      ctx.ellipse(r * 0.5, r * 0.18, r * 0.12, r * 0.07, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // eye with shine and blink
     const ex = r * 0.45;
     const ey = -r * 0.16;
+    const open = blink > 0 ? 0.12 : 1;
+    ctx.save();
+    ctx.translate(ex, ey);
+    ctx.scale(1, open);
     ctx.fillStyle = PAPER;
     ctx.beginPath();
-    ctx.arc(ex, ey, r * 0.19, 0, Math.PI * 2);
+    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineWidth = Math.max(1.5, r * 0.05);
+    ctx.lineWidth = Math.max(1.5, r * 0.05) / open;
     ctx.stroke();
-    ctx.fillStyle = INK;
-    ctx.beginPath();
-    ctx.arc(ex + r * 0.05, ey, r * 0.09, 0, Math.PI * 2);
-    ctx.fill();
+    if (open === 1) {
+      ctx.fillStyle = INK;
+      ctx.beginPath();
+      ctx.arc(r * 0.05, r * 0.01, r * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = PAPER;
+      ctx.beginPath();
+      ctx.arc(r * 0.08, -r * 0.04, r * 0.035, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
     if (angry) {
       ctx.lineWidth = Math.max(2.5, r * 0.08);
       ctx.beginPath();
-      ctx.moveTo(ex - r * 0.22, ey - r * 0.32);
-      ctx.lineTo(ex + r * 0.2, ey - r * 0.16);
+      ctx.moveTo(ex - r * 0.24, ey - r * 0.34);
+      ctx.lineTo(ex + r * 0.2, ey - r * 0.17);
       ctx.stroke();
       ctx.fillStyle = PAPER;
       ctx.beginPath();
@@ -269,53 +382,61 @@ export function fishGame(arena, api) {
     ctx.restore();
   }
 
-  function drawBackground(t) {
-    if (imageReady(sea)) {
-      // Cover-fit, anchored to the bottom so the painted sea floor stays on screen.
-      const scale = Math.max(view.w / sea.naturalWidth, view.h / sea.naturalHeight);
-      const w = sea.naturalWidth * scale;
-      const h = sea.naturalHeight * scale;
-      ctx.drawImage(sea, (view.w - w) / 2, view.h - h, w, h);
-      return;
-    }
-    const g = ctx.createLinearGradient(0, 0, 0, view.h);
-    g.addColorStop(0, '#55c6f0');
-    g.addColorStop(1, '#0d5aa0');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, view.w, view.h);
-    ctx.fillStyle = 'rgba(255,255,255,0.07)';
-    for (let i = 0; i < 4; i++) {
-      const x = ((i + 0.3) / 4) * view.w + Math.sin(t / 3000 + i) * 30;
-      ctx.beginPath();
-      ctx.moveTo(x - 30, 0);
-      ctx.lineTo(x + 30, 0);
-      ctx.lineTo(x + 120, view.h);
-      ctx.lineTo(x - 10, view.h);
-      ctx.closePath();
-      ctx.fill();
-    }
+  function drawShadow(x, y, size) {
+    const u = unit();
     const floor = seaFloor();
-    ctx.fillStyle = '#f2d48f';
+    const near = clamp(1 - (floor - y) / (view.h * 0.9), 0, 1);
+    if (near <= 0.05) return;
+    ctx.fillStyle = `rgba(10,50,70,${0.18 * near})`;
     ctx.beginPath();
-    ctx.moveTo(0, floor);
-    for (let x = 0; x <= view.w; x += 40) ctx.lineTo(x, floor + Math.sin(x / 60) * 5);
-    ctx.lineTo(view.w, view.h);
-    ctx.lineTo(0, view.h);
-    ctx.closePath();
+    ctx.ellipse(x, floor + 6 * u, size * u * (0.7 + near * 0.4), size * u * 0.14, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.lineCap = 'round';
-    for (const w of weeds) {
-      const x = w.f * view.w;
-      const h = w.h * view.h;
-      ctx.strokeStyle = '#2a9a52';
-      ctx.lineWidth = 9 * unit();
-      ctx.beginPath();
-      ctx.moveTo(x, floor + 4);
-      for (let k = 1; k <= 6; k++) {
-        const yy = floor - (h * k) / 6;
-        ctx.lineTo(x + Math.sin(t / 700 + w.phase + k * 0.7) * 10 * (k / 6), yy);
-      }
-      ctx.stroke();
+  }
+
+  function paintSea(x, w, h) {
+    if (imageReady(sea)) {
+      const scale = Math.max(w / sea.naturalWidth, h / sea.naturalHeight);
+      const iw = sea.naturalWidth * scale;
+      const ih = sea.naturalHeight * scale;
+      x.drawImage(sea, (w - iw) / 2, h - ih, iw, ih);
+    } else {
+      const g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, '#55c6f0');
+      g.addColorStop(1, '#0d5aa0');
+      x.fillStyle = g;
+      x.fillRect(0, 0, w, h);
+    }
+    const v = x.createRadialGradient(w / 2, h * 0.45, Math.min(w, h) * 0.35, w / 2, h * 0.45, Math.max(w, h) * 0.8);
+    v.addColorStop(0, 'rgba(0,30,60,0)');
+    v.addColorStop(1, 'rgba(0,30,60,0.28)');
+    x.fillStyle = v;
+    x.fillRect(0, 0, w, h);
+  }
+
+  function paintBeam(x, w, h) {
+    const g = x.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g;
+    x.beginPath();
+    x.moveTo(w * 0.35, 0);
+    x.lineTo(w * 0.65, 0);
+    x.lineTo(w, h);
+    x.lineTo(0, h);
+    x.closePath();
+    x.fill();
+  }
+
+  function drawBackground(t) {
+    ctx.drawImage(seaLayer(imageReady(sea) ? 'art' : 'plain', view.w, view.h, paintSea), 0, 0, view.w, view.h);
+    const beam = beamLayer('beam', 160, view.h * 0.9, paintBeam);
+    for (let i = 0; i < 3; i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.1 + 0.07 * Math.sin(t / 1800 + i * 2);
+      ctx.translate(((i + 0.5) / 3) * view.w + Math.sin(t / 4000 + i) * 40, 0);
+      ctx.rotate(0.18);
+      ctx.drawImage(beam, -80, -20, 160, view.h * 0.9);
+      ctx.restore();
     }
   }
 
@@ -328,18 +449,26 @@ export function fishGame(arena, api) {
     const y = view.w < 520 ? 52 : 16;
     const h = 22;
     const fill = clamp((stage + growth / STAGE_NEED[stage]) / STAGE_SIZES.length, 0, 1);
-    ctx.fillStyle = 'rgba(255,253,246,0.85)';
+    ctx.save();
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, barW, h, h / 2);
+    else ctx.rect(x, y, barW, h);
+    ctx.fillStyle = 'rgba(255,253,246,0.88)';
+    ctx.fill();
+    ctx.clip();
+    const g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#7be39a');
+    g.addColorStop(1, '#2fb36a');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y, barW * fill, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillRect(x, y + 3, barW * fill, h * 0.25);
+    ctx.restore();
     ctx.strokeStyle = INK;
     ctx.lineWidth = 3;
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(x, y, barW, h, h / 2);
     else ctx.rect(x, y, barW, h);
-    ctx.fill();
-    ctx.save();
-    ctx.clip();
-    ctx.fillStyle = '#4cc96f';
-    ctx.fillRect(x, y, barW * fill, h);
-    ctx.restore();
     ctx.stroke();
     for (let i = 1; i < STAGE_SIZES.length; i++) {
       ctx.beginPath();
@@ -356,7 +485,6 @@ export function fishGame(arena, api) {
     loop((dt, t) => {
       const u = unit();
       if (!paused) {
-        // player movement
         let dvx = 0;
         let dvy = 0;
         const max = 330 * u;
@@ -385,6 +513,15 @@ export function fishGame(arena, api) {
         player.size += (STAGE_SIZES[stage] - player.size) * Math.min(1, dt * 4);
         player.inv = Math.max(0, player.inv - dt);
         player.mouth = Math.max(0, player.mouth - dt);
+        player.pop = Math.max(0, player.pop - dt * 2.5);
+        player.blink -= dt;
+        if (player.blink < -0.12) player.blink = rand(2, 5);
+        const speed = Math.hypot(player.vx, player.vy);
+        player.trail -= dt;
+        if (speed > 150 * u && player.trail <= 0) {
+          player.trail = 0.06;
+          addBubble(player.x - player.face * player.size * u * 1.3, player.y + rand(-4, 4), rand(2, 4), rand(20, 50));
+        }
 
         spawnIn -= dt;
         if (spawnIn <= 0 && fish.length < 12 + level) {
@@ -394,6 +531,8 @@ export function fishGame(arena, api) {
 
         for (const f of fish) {
           f.mouth = Math.max(0, f.mouth - dt);
+          f.blink -= dt;
+          if (f.blink < -0.12) f.blink = rand(2, 6);
           const bigger = f.size > player.size * 1.08;
           const dx = player.x - f.x;
           const dy = player.y - f.y;
@@ -415,51 +554,76 @@ export function fishGame(arena, api) {
         fish = fish.filter((f) => f.x > -f.size * 3 * u && f.x < view.w + f.size * 3 * u);
       }
 
-      if (Math.random() < dt * 3) bubbles.push({ x: rand(0, view.w), y: view.h, r: rand(2, 6), v: rand(30, 70) });
+      if (Math.random() < dt * 3) addBubble(rand(0, view.w), view.h + 10, rand(2, 6));
       for (const b of bubbles) {
         b.y -= b.v * dt;
-        b.x += Math.sin(t / 400 + b.r) * 0.3;
+        b.x += Math.sin(t / 400 + b.wob) * 0.4;
       }
-      bubbles = bubbles.filter((b) => b.y > -10);
+      bubbles = bubbles.filter((b) => b.y > -12);
       for (const p of bits) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
+        p.vx *= 0.96;
+        p.vy *= 0.96;
         p.life -= dt;
       }
       bits = bits.filter((p) => p.life > 0);
+      for (const r of rings) {
+        r.r += r.grow * dt;
+        r.life -= dt;
+      }
+      rings = rings.filter((r) => r.life > 0);
       for (const f of floaters) {
         f.y -= 50 * dt;
         f.life -= dt;
       }
       floaters = floaters.filter((f) => f.life > 0);
+      flash = Math.max(0, flash - dt);
       hintTime -= dt;
       if (hint < 1 || hintTime <= 0) hint = Math.max(0, Math.min(hint, 0.99) - dt * 1.5);
 
+      ctx.save();
+      shake.apply(ctx, dt);
       drawBackground(t);
-      ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-      ctx.lineWidth = 1.5;
-      for (const b of bubbles) {
+      for (const f of fish) drawShadow(f.x, f.y, f.size);
+      drawShadow(player.x, player.y, player.size);
+      for (const f of fish) {
+        drawFish(f.x, f.y, f.size, f.face, f.colors, t + f.phase * 300, { angry: f.size > player.size * 1.08, mouth: f.mouth, blink: f.blink < 0 ? 1 : 0 });
+      }
+      const protectedAlpha = player.inv > 0 ? 0.55 + 0.35 * Math.sin(t / 70) : 1;
+      drawFish(player.x, player.y, player.size, player.face, PLAYER_COLORS, t, {
+        isPlayer: true,
+        mouth: player.mouth,
+        blink: player.blink < 0 ? 1 : 0,
+        alpha: protectedAlpha,
+        pop: player.pop
+      });
+      for (const b of bubbles) ctx.drawImage(bubble, b.x - b.r, b.y - b.r, b.r * 2, b.r * 2);
+      for (const r of rings) {
+        ctx.globalAlpha = Math.max(0, r.life / r.max);
+        ctx.strokeStyle = r.color;
+        ctx.lineWidth = r.width;
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
         ctx.stroke();
       }
-      for (const f of fish) {
-        drawFish(f.x, f.y, f.size, f.face, f.colors, t + f.phase * 300, { angry: f.size > player.size * 1.08, mouth: f.mouth });
-      }
-      const blink = player.inv > 0 && Math.floor(t / 120) % 2 === 0;
-      drawFish(player.x, player.y, player.size, player.face, ['#ff8a3d', '#e0601a'], t, { player: true, mouth: player.mouth, blink });
       for (const p of bits) {
-        ctx.globalAlpha = Math.max(0, p.life / 0.6);
+        ctx.globalAlpha = Math.max(0, p.life / p.max);
         ctx.fillStyle = p.color;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+      ctx.restore();
+      if (flash > 0) {
+        ctx.fillStyle = `rgba(255,70,70,${flash * 0.8})`;
+        ctx.fillRect(0, 0, view.w, view.h);
+      }
       for (const f of floaters) outlinedText(ctx, f.text, f.x, f.y, 22, { alpha: Math.max(0, f.life), width: 5 });
       drawHud();
       if (hint > 0 && !paused) hintText(ctx, view, 'Eat the smaller fish!', hint);
-    })
+    }, cv)
   );
 
   s.add(() => cv.destroy());
